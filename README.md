@@ -53,8 +53,10 @@ In **PHP mode**, the public planner uses the same browser UI and calendar render
 Administration is intentionally protected **outside the application** by the hosting platform.
 
 ---
+
 # ScreenShots
 are available in the screenshot directory
+
 ---
 
 # Cloudflare installation
