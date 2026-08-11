@@ -614,6 +614,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
 </div>
 
 <div class="toolbar-right">
+  <button id="visitor-view-toggle" class="visitor-view-toggle" type="button" hidden aria-pressed="false">Visitor view</button>
   <button id="planner-help-button" class="planner-help-button ${(cals.length===0 || shades.length===0) ? 'planner-help-button--attention' : ''}" type="button" title="Help">?</button>
 </div>
 
@@ -633,6 +634,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
   ${(cals.length===0 || shades.length===0) ? `<div class="planner-help-alert"><strong>Setup is incomplete.</strong><p>${cals.length===0 ? 'No public calendars have been added. ' : ''}${shades.length===0 ? 'No shading has been added for this year. ' : ''}</p></div>` : ''}
 </div>
 </section>
+<div class="small-screen-notice">This planner works on a small screen, but a larger screen gives a much better whole-year view.</div>
 </div>
 
 <main id="planner" class="planner"></main>

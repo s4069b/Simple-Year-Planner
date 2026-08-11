@@ -5,6 +5,7 @@
   const weekdays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
   let adminMode = false;
+  let visitorView = false;
   let adminConfig = null;
   let shadeMode = false;
   let shadeStart = '';
@@ -86,8 +87,49 @@
   eventPanel?.addEventListener('click', event => event.stopPropagation());
   document.addEventListener('keydown', event => { if (event.key === 'Escape' && eventBackdrop && !eventBackdrop.hidden) closeEventDetails(); });
 
+  function eventRange(event) {
+    const start = event.start ? new Date(event.start) : new Date(`${event.date}T00:00:00`);
+    let end = event.end ? new Date(event.end) : new Date(start);
+    if (Number.isNaN(start.getTime())) return null;
+    if (Number.isNaN(end.getTime()) || end <= start) end = new Date(start);
+
+    const startDay = iso(start);
+    let endDay = startDay;
+    if (end > start) endDay = iso(new Date(end.getTime() - 1));
+    return { start, end, startDay, endDay, multiDay: endDay > startDay };
+  }
+
+  function uniqueEvents() {
+    const seen = new Set();
+    const result = [];
+    for (const event of data.events) {
+      const key = `${event.calendarId || ''}|${event.uid || ''}|${event.start || event.date || ''}|${event.end || ''}|${event.title || ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      result.push(event);
+    }
+    return result;
+  }
+
+  function makeEventButton(event, className = 'event') {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = className;
+    item.dataset.calendar = event.calendarId;
+    item.textContent = event.title;
+    item.style.background = event.colour;
+    item.style.color = event.textColour || '#fff';
+    item.title = `View details for ${event.title}`;
+    item.addEventListener('click', clickEvent => {
+      clickEvent.stopPropagation();
+      openEventDetails(event);
+    });
+    return item;
+  }
+
   function renderPlanner() {
     planner.replaceChildren();
+    const events = uniqueEvents();
 
     for (let month = 0; month < 12; month++) {
       const section = document.createElement('section');
@@ -108,13 +150,15 @@
       }
 
       const first = new Date(data.year, month, 1);
-      for (let i = 0; i < first.getDay(); i++) {
+      const firstOffset = first.getDay();
+      for (let i = 0; i < firstOffset; i++) {
         const blank = document.createElement('div');
         blank.className = 'day blank';
         grid.append(blank);
       }
 
       const days = new Date(data.year, month + 1, 0).getDate();
+      const dayCells = new Map();
       for (let day = 1; day <= days; day++) {
         const date = iso(new Date(data.year, month, day));
         const cell = document.createElement('div');
@@ -127,42 +171,84 @@
         number.textContent = String(day);
         cell.append(number);
 
-        const eventsForCell = [];
-        const seenEvents = new Set();
-        for (const event of data.events) {
-          const key = `${event.calendarId || ''}|${event.uid || ''}|${event.start || ''}|${event.end || ''}`;
-          if (seenEvents.has(key)) continue;
-
-          let coversDate = event.date === date;
-          if (event.start && event.end) {
-            const startDay = iso(new Date(event.start));
-            const occupiedEnd = new Date(new Date(event.end).getTime() - 1);
-            const endDay = iso(occupiedEnd);
-            coversDate = date >= startDay && date <= endDay;
-          }
-
-          if (!coversDate) continue;
-          seenEvents.add(key);
-          eventsForCell.push(event);
-        }
-
-        for (const event of eventsForCell) {
-          const item = document.createElement('button');
-          item.type = 'button';
-          item.className = 'event';
-          item.dataset.calendar = event.calendarId;
-          item.textContent = event.title;
-          item.style.background = event.colour;
-          item.style.color = event.textColour || '#fff';
-          item.title = `View details for ${event.title}`;
-          item.addEventListener('click', clickEvent => {
-            clickEvent.stopPropagation();
-            openEventDetails(event);
-          });
-          cell.append(item);
-        }
+        const eventHost = document.createElement('div');
+        eventHost.className = 'day-events';
+        cell.append(eventHost);
+        dayCells.set(date, { cell, eventHost, day });
 
         grid.append(cell);
+      }
+
+      // Ordinary one-day events stay inside their day cell. Multi-day events are
+      // rendered below as one continuous bar per visible week segment.
+      for (const event of events) {
+        const range = eventRange(event);
+        if (!range || range.multiDay) continue;
+        const target = dayCells.get(range.startDay);
+        if (target) target.eventHost.append(makeEventButton(event));
+      }
+
+      const monthStart = iso(new Date(data.year, month, 1));
+      const monthEnd = iso(new Date(data.year, month, days));
+      const segmentsByWeek = new Map();
+
+      for (const event of events) {
+        const range = eventRange(event);
+        if (!range || !range.multiDay || range.endDay < monthStart || range.startDay > monthEnd) continue;
+        let current = range.startDay < monthStart ? monthStart : range.startDay;
+        const clippedEnd = range.endDay > monthEnd ? monthEnd : range.endDay;
+
+        while (current <= clippedEnd) {
+          const currentDate = new Date(`${current}T12:00:00`);
+          const day = currentDate.getDate();
+          const cellIndex = firstOffset + day - 1;
+          const week = Math.floor(cellIndex / 7);
+          const column = (cellIndex % 7) + 1;
+          const daysToSaturday = 7 - column;
+          const candidateEnd = new Date(currentDate);
+          candidateEnd.setDate(candidateEnd.getDate() + daysToSaturday);
+          let segmentEnd = iso(candidateEnd);
+          if (segmentEnd > clippedEnd) segmentEnd = clippedEnd;
+          if (segmentEnd > monthEnd) segmentEnd = monthEnd;
+
+          const endDay = new Date(`${segmentEnd}T12:00:00`).getDate();
+          const span = endDay - day + 1;
+          const segment = { event, week, column, span, start: current, end: segmentEnd };
+          if (!segmentsByWeek.has(week)) segmentsByWeek.set(week, []);
+          segmentsByWeek.get(week).push(segment);
+          current = nextDate(segmentEnd, 1);
+        }
+      }
+
+      for (const [week, segments] of segmentsByWeek) {
+        const lanes = [];
+        segments.sort((a, b) => a.column - b.column || b.span - a.span || a.event.title.localeCompare(b.event.title));
+        for (const segment of segments) {
+          let lane = 0;
+          const segmentEndColumn = segment.column + segment.span - 1;
+          while (lanes[lane]?.some(([start, end]) => !(segmentEndColumn < start || segment.column > end))) lane++;
+          if (!lanes[lane]) lanes[lane] = [];
+          lanes[lane].push([segment.column, segmentEndColumn]);
+          segment.lane = lane;
+
+          const bar = makeEventButton(segment.event, 'event multi-day-event');
+          bar.style.gridColumn = `${segment.column} / span ${segment.span}`;
+          bar.style.gridRow = String(week + 2);
+          bar.style.setProperty('--event-lane', String(lane));
+          bar.dataset.segmentStart = segment.start;
+          bar.dataset.segmentEnd = segment.end;
+          grid.append(bar);
+        }
+
+        const laneCount = lanes.length;
+        for (let column = 1; column <= 7; column++) {
+          const cellIndex = week * 7 + (column - 1) - firstOffset;
+          const day = cellIndex + 1;
+          if (day >= 1 && day <= days) {
+            const date = iso(new Date(data.year, month, day));
+            dayCells.get(date)?.cell.style.setProperty('--multi-event-lanes', String(laneCount));
+          }
+        }
       }
 
       section.append(grid);
@@ -175,7 +261,7 @@
   function bindShadeCells() {
     document.querySelectorAll('.day[data-date]').forEach(cell => {
       cell.addEventListener('pointerdown', event => {
-        if (!adminMode || !shadeMode) return;
+        if (!adminMode || visitorView || !shadeMode) return;
 
         event.preventDefault();
         draggingShade = true;
@@ -196,13 +282,13 @@
       });
 
       cell.addEventListener('pointerenter', () => {
-        if (!adminMode || !shadeMode || !draggingShade) return;
+        if (!adminMode || visitorView || !shadeMode || !draggingShade) return;
         shadeEnd = cell.dataset.date;
         paintShadeSelection();
       });
 
       cell.addEventListener('pointerup', () => {
-        if (!adminMode || !shadeMode || !draggingShade) return;
+        if (!adminMode || visitorView || !shadeMode || !draggingShade) return;
 
         const endedOn = cell.dataset.date;
         draggingShade = false;
@@ -500,44 +586,46 @@
     return body;
   }
 
+  function applyAdminPresentation() {
+    const editing = adminMode && !visitorView;
+    document.body.classList.toggle('is-admin', editing);
+    document.body.classList.toggle('is-visitor-preview', adminMode && visitorView);
+
+    document.querySelectorAll('.admin-only').forEach(el => { el.hidden = !editing; });
+    document.querySelectorAll('.public-manager-label').forEach(el => { el.hidden = editing; });
+    document.querySelectorAll('.admin-manager-label').forEach(el => { el.hidden = !editing; });
+    document.querySelectorAll('.toolbar-control[data-manager]').forEach(el => {
+      el.classList.toggle('toolbar-control--admin', editing);
+      if (!editing) el.removeAttribute('open');
+    });
+
+    const visitorToggle = document.getElementById('visitor-view-toggle');
+    if (visitorToggle) {
+      visitorToggle.hidden = !adminMode;
+      visitorToggle.textContent = visitorView ? 'Edit view' : 'Visitor view';
+      visitorToggle.setAttribute('aria-pressed', visitorView ? 'true' : 'false');
+    }
+  }
+
   async function detectAdmin() {
     try {
       adminConfig = await adminApi('/api/admin/config');
       adminMode = true;
-      document.body.classList.add('is-admin');
-      document.querySelectorAll('.admin-only').forEach(el => {
-        el.hidden = false;
-      });
-      document.querySelectorAll('.public-manager-label').forEach(el => {
-        el.hidden = true;
-      });
-      document.querySelectorAll('.admin-manager-label').forEach(el => {
-        el.hidden = false;
-      });
-      document.querySelectorAll('.toolbar-control[data-manager]').forEach(el => {
-        el.classList.add('toolbar-control--admin');
-      });
-
-      // Admin access is detected asynchronously after the public toolbar has
-      // already been painted. Safari can retain the old flex geometry after
-      // the manager labels and admin actions become visible, making legend
-      // items overlap/duplicate until a <details> element is opened. Force one
-      // complete toolbar layout pass now so the initial admin view is identical
-      // to the settled view after opening a manager.
-      const toolbarFlow = document.querySelector('.toolbar-flow');
-      if (toolbarFlow) {
-        const previousDisplay = toolbarFlow.style.display;
-        requestAnimationFrame(() => {
-          toolbarFlow.style.display = 'none';
-          void toolbarFlow.offsetHeight;
-          toolbarFlow.style.display = previousDisplay;
-          void toolbarFlow.offsetHeight;
-        });
-      }
+      visitorView = false;
+      applyAdminPresentation();
     } catch {
       adminMode = false;
+      visitorView = false;
+      applyAdminPresentation();
     }
   }
+
+  document.getElementById('visitor-view-toggle')?.addEventListener('click', () => {
+    if (!adminMode) return;
+    visitorView = !visitorView;
+    if (visitorView && shadeMode) stopShadeMode();
+    applyAdminPresentation();
+  });
 
   function openPlannerIntroEditor() {
     if (!adminMode) return;
