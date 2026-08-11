@@ -416,6 +416,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
   <p>The previous year, current year and next year are available.</p>
   <p>Calendars are refreshed automatically on the schedule configured for the host. This repository defaults to every 3 hours. Administrators can also use <strong>Sync</strong> beside a calendar for an immediate refresh.</p>
   <p>If you have administrator access, editing controls appear automatically.</p>
+  <p><strong>Administrators:</strong> <a href="/api/admin/config" target="_blank" rel="noopener">Log in to edit the planner</a>. After signing in through Cloudflare Access, return to this page and refresh it.</p>
   ${(cals.length===0 || shades.length===0) ? `<div class="planner-help-alert"><strong>Setup is incomplete.</strong><p>${cals.length===0 ? 'No public calendars have been added. ' : ''}${shades.length===0 ? 'No shading has been added for this year. ' : ''}</p></div>` : ''}
 </div>
 </section>
