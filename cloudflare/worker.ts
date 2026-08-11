@@ -37,6 +37,9 @@ type PlannerEvent = {
   start: string;
   end: string;
   url?: string | null;
+  description?: string | null;
+  location?: string | null;
+  allDay?: boolean;
   calendarId?: string;
   calendarName?: string;
   colour?: string;
@@ -163,13 +166,90 @@ function parseRRule(rule: string): Record<string, string> {
   }).filter(([key]) => Boolean(key)));
 }
 
-function addInterval(date: Date, freq: string, interval: number): Date {
-  const next = new Date(date);
-  if (freq === 'DAILY') next.setDate(next.getDate() + interval);
-  else if (freq === 'WEEKLY') next.setDate(next.getDate() + interval * 7);
-  else if (freq === 'MONTHLY') next.setMonth(next.getMonth() + interval);
-  else if (freq === 'YEARLY') next.setFullYear(next.getFullYear() + interval);
-  return next;
+const RRULE_WEEKDAYS: Record<string, number> = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
+
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours(), date.getMinutes(), date.getSeconds(), date.getMilliseconds());
+}
+
+function daysBetween(a: Date, b: Date): number {
+  const aa = new Date(a.getFullYear(), a.getMonth(), a.getDate()).getTime();
+  const bb = new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime();
+  return Math.floor((bb - aa) / 86400000);
+}
+
+function monthsBetween(a: Date, b: Date): number {
+  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+}
+
+function ordinalWeekdayMatch(date: Date, token: string): boolean {
+  const match = token.match(/^([+-]?\d+)?(SU|MO|TU|WE|TH|FR|SA)$/);
+  if (!match) return false;
+  const weekday = RRULE_WEEKDAYS[match[2]];
+  if (date.getDay() !== weekday) return false;
+  if (!match[1]) return true;
+
+  const ordinal = Number(match[1]);
+  if (ordinal > 0) {
+    return Math.floor((date.getDate() - 1) / 7) + 1 === ordinal;
+  }
+
+  const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  return -(Math.floor((lastDay - date.getDate()) / 7) + 1) === ordinal;
+}
+
+function matchesRRuleDate(date: Date, start: Date, rule: Record<string, string>): boolean {
+  if (date < startOfDay(start)) return false;
+
+  const freq = rule.FREQ || '';
+  const interval = Math.max(1, Number(rule.INTERVAL || 1));
+  const byMonth = rule.BYMONTH?.split(',').map(Number).filter(Boolean) || [];
+  const byMonthDay = rule.BYMONTHDAY?.split(',').map(Number).filter(Number.isFinite) || [];
+  const byDay = rule.BYDAY?.split(',').filter(Boolean) || [];
+  const bySetPos = rule.BYSETPOS?.split(',').map(Number).filter(Number.isFinite) || [];
+
+  if (byMonth.length && !byMonth.includes(date.getMonth() + 1)) return false;
+
+  if (freq === 'DAILY') {
+    if (daysBetween(start, date) % interval !== 0) return false;
+  } else if (freq === 'WEEKLY') {
+    const elapsedDays = daysBetween(start, date);
+    const weekIndex = Math.floor((elapsedDays + start.getDay()) / 7);
+    if (weekIndex % interval !== 0) return false;
+    const allowedDays = byDay.length ? byDay : [Object.keys(RRULE_WEEKDAYS).find(key => RRULE_WEEKDAYS[key] === start.getDay()) || 'SU'];
+    if (!allowedDays.some(token => ordinalWeekdayMatch(date, token.replace(/^[+-]?\d+/, '')))) return false;
+  } else if (freq === 'MONTHLY') {
+    if (monthsBetween(start, date) % interval !== 0) return false;
+    if (!byMonthDay.length && !byDay.length && date.getDate() !== start.getDate()) return false;
+  } else if (freq === 'YEARLY') {
+    if ((date.getFullYear() - start.getFullYear()) % interval !== 0) return false;
+    if (!byMonth.length && date.getMonth() !== start.getMonth()) return false;
+    if (!byMonthDay.length && !byDay.length && date.getDate() !== start.getDate()) return false;
+  } else {
+    return false;
+  }
+
+  if (byMonthDay.length) {
+    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+    if (!byMonthDay.some(day => day > 0 ? date.getDate() === day : date.getDate() === lastDay + day + 1)) return false;
+  }
+
+  if (byDay.length && freq !== 'WEEKLY' && !byDay.some(token => ordinalWeekdayMatch(date, token))) return false;
+
+  if (bySetPos.length && byDay.length && freq === 'MONTHLY') {
+    const matchingDays: number[] = [];
+    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+    for (let day = 1; day <= lastDay; day++) {
+      const candidate = new Date(date.getFullYear(), date.getMonth(), day, date.getHours(), date.getMinutes(), date.getSeconds());
+      if (byDay.some(token => ordinalWeekdayMatch(candidate, token.replace(/^[+-]?\d+/, '')))) matchingDays.push(day);
+    }
+    const selectedDays = bySetPos
+      .map(pos => pos > 0 ? matchingDays[pos - 1] : matchingDays[matchingDays.length + pos])
+      .filter((day): day is number => Number.isInteger(day));
+    if (!selectedDays.includes(date.getDate())) return false;
+  }
+
+  return true;
 }
 
 function occurrence(event: any, start: Date, end: Date, year: number): PlannerEvent[] {
@@ -182,6 +262,9 @@ function occurrence(event: any, start: Date, end: Date, year: number): PlannerEv
     start: start.toISOString(),
     end: end.toISOString(),
     url: event.url || null,
+    description: event.description || null,
+    location: event.location || null,
+    allDay: Boolean(event.allDay),
   }];
 }
 
@@ -191,25 +274,25 @@ function expandEvent(event: any, year: number): PlannerEvent[] {
   if (!event.rrule) return occurrence(event, start, end, year);
 
   const rule = parseRRule(event.rrule);
-  const freq = rule.FREQ || '';
-  const interval = Math.max(1, Number(rule.INTERVAL || 1));
-  const count = Math.max(1, Number(rule.COUNT || 1000));
+  const count = rule.COUNT ? Math.max(1, Number(rule.COUNT)) : Number.POSITIVE_INFINITY;
   const until = rule.UNTIL ? parseIcsDate(rule.UNTIL, {}) : null;
   const duration = end.getTime() - start.getTime();
   const results: PlannerEvent[] = [];
+  const targetEnd = new Date(year, 11, 31, 23, 59, 59);
   let current = new Date(start);
-  let n = 0;
-  let safety = 2000;
+  let generated = 0;
+  let safety = 30000;
 
-  while (n < count && safety-- > 0) {
+  while (current <= targetEnd && generated < count && safety-- > 0) {
     if (until && current > until) break;
-    results.push(...occurrence(event, current, new Date(current.getTime() + duration), year));
-    if (current.getFullYear() > year + 1) break;
-    const next = addInterval(current, freq, interval);
-    if (next.getTime() === current.getTime()) break;
-    current = next;
-    n++;
+    if (matchesRRuleDate(current, start, rule)) {
+      generated++;
+      results.push(...occurrence(event, current, new Date(current.getTime() + duration), year));
+    }
+    current = new Date(current);
+    current.setDate(current.getDate() + 1);
   }
+
   return results;
 }
 
@@ -228,8 +311,10 @@ function parseIcs(ics: string, year: number): PlannerEvent[] {
     if (name === 'UID') current.uid = value;
     else if (name === 'SUMMARY') current.summary = unescapeIcs(value);
     else if (name === 'URL') current.url = value;
+    else if (name === 'DESCRIPTION') current.description = unescapeIcs(value);
+    else if (name === 'LOCATION') current.location = unescapeIcs(value);
     else if (name === 'RRULE') current.rrule = value;
-    else if (name === 'DTSTART') current.start = parseIcsDate(value, params);
+    else if (name === 'DTSTART') { current.start = parseIcsDate(value, params); current.allDay = params.VALUE === 'DATE' || /^\d{8}$/.test(value); }
     else if (name === 'DTEND') current.end = parseIcsDate(value, params);
   }
   return events;
@@ -416,7 +501,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
   <p>The previous year, current year and next year are available.</p>
   <p>Calendars are refreshed automatically on the schedule configured for the host. This repository defaults to every 3 hours. Administrators can also use <strong>Sync</strong> beside a calendar for an immediate refresh.</p>
   <p>If you have administrator access, editing controls appear automatically.</p>
-  <p><strong>Administrators:</strong> <a href="/admin" rel="noopener">Log in to edit the planner</a>. After signing in through Cloudflare Access, return to this page and refresh it.</p>
+  <p><strong>Administrators:</strong> <a href="/admin">Log in to edit the planner</a>.</p>
   ${(cals.length===0 || shades.length===0) ? `<div class="planner-help-alert"><strong>Setup is incomplete.</strong><p>${cals.length===0 ? 'No public calendars have been added. ' : ''}${shades.length===0 ? 'No shading has been added for this year. ' : ''}</p></div>` : ''}
 </div>
 </section>
@@ -552,6 +637,25 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
       <button type="submit" class="primary">Save shading</button>
     </div>
   </form>
+</div>
+
+<div id="event-detail-backdrop" class="event-detail-backdrop" hidden>
+  <section id="event-detail-panel" class="event-detail-panel" role="dialog" aria-modal="true" aria-labelledby="event-detail-title">
+    <div class="event-detail-header">
+      <div>
+        <div id="event-detail-calendar" class="event-detail-calendar"></div>
+        <h2 id="event-detail-title"></h2>
+      </div>
+      <button id="event-detail-close" type="button" aria-label="Close event details">×</button>
+    </div>
+    <div id="event-detail-when" class="event-detail-row"></div>
+    <div id="event-detail-location" class="event-detail-row" hidden></div>
+    <div id="event-detail-description" class="event-detail-description" hidden></div>
+    <div class="event-detail-actions">
+      <a id="event-detail-link" href="#" target="_blank" rel="noopener" hidden>Open event ↗</a>
+      <button id="event-detail-done" type="button">Close</button>
+    </div>
+  </section>
 </div>
 
 <script>window.YEAR_PLANNER_DATA=${JSON.stringify({year, events, shading: shades, calendars: cals, intro}).replace(/</g,'\\u003c')};</script>
@@ -736,7 +840,7 @@ export default {
     const path = url.pathname;
 
     if (path === '/admin' || path === '/admin/') {
-  return Response.redirect(new URL('/api/admin/login', request.url).toString(), 302);
+      return Response.redirect(new URL('/api/admin/login', request.url).toString(), 302);
     }
     if (path.startsWith('/api/admin/')) {
       try { return await handleAdminApi(request, env, path); }

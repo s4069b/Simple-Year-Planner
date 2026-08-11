@@ -32,6 +32,60 @@
     cell.style.background = shades.length ? (shades[shades.length - 1].colour || '#eef2f7') : '';
   }
 
+  const eventBackdrop = document.getElementById('event-detail-backdrop');
+  const eventPanel = document.getElementById('event-detail-panel');
+
+  function formatEventWhen(event) {
+    if (event.allDay) {
+      return new Intl.DateTimeFormat('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+        .format(new Date(`${event.date}T00:00:00`));
+    }
+
+    const start = new Date(event.start);
+    const end = new Date(event.end);
+    const dateText = new Intl.DateTimeFormat('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Australia/Brisbane' }).format(start);
+    const time = value => new Intl.DateTimeFormat('en-AU', { hour: 'numeric', minute: '2-digit', timeZone: 'Australia/Brisbane' }).format(value);
+    return `${dateText}, ${time(start)}–${time(end)}`;
+  }
+
+  function closeEventDetails() {
+    if (!eventBackdrop) return;
+    eventBackdrop.hidden = true;
+  }
+
+  function openEventDetails(event) {
+    if (!eventBackdrop) return;
+    document.getElementById('event-detail-title').textContent = event.title || 'Untitled event';
+    document.getElementById('event-detail-calendar').textContent = event.calendarName || '';
+    document.getElementById('event-detail-when').textContent = formatEventWhen(event);
+
+    const location = document.getElementById('event-detail-location');
+    location.textContent = event.location ? `Location: ${event.location}` : '';
+    location.hidden = !event.location;
+
+    const description = document.getElementById('event-detail-description');
+    description.textContent = event.description || '';
+    description.hidden = !event.description;
+
+    const link = document.getElementById('event-detail-link');
+    if (event.url) {
+      link.href = event.url;
+      link.hidden = false;
+    } else {
+      link.removeAttribute('href');
+      link.hidden = true;
+    }
+
+    eventBackdrop.hidden = false;
+    document.getElementById('event-detail-close')?.focus();
+  }
+
+  document.getElementById('event-detail-close')?.addEventListener('click', closeEventDetails);
+  document.getElementById('event-detail-done')?.addEventListener('click', closeEventDetails);
+  eventBackdrop?.addEventListener('click', event => { if (event.target === eventBackdrop) closeEventDetails(); });
+  eventPanel?.addEventListener('click', event => event.stopPropagation());
+  document.addEventListener('keydown', event => { if (event.key === 'Escape' && eventBackdrop && !eventBackdrop.hidden) closeEventDetails(); });
+
   function renderPlanner() {
     planner.replaceChildren();
 
@@ -74,19 +128,18 @@
         cell.append(number);
 
         for (const event of data.events.filter(e => e.date === date)) {
-          const item = document.createElement(event.url ? 'a' : 'div');
+          const item = document.createElement('button');
+          item.type = 'button';
           item.className = 'event';
           item.dataset.calendar = event.calendarId;
           item.textContent = event.title;
           item.style.background = event.colour;
           item.style.color = event.textColour || '#fff';
-
-          if (event.url) {
-            item.href = event.url;
-            item.target = '_blank';
-            item.rel = 'noopener';
-          }
-
+          item.title = `View details for ${event.title}`;
+          item.addEventListener('click', clickEvent => {
+            clickEvent.stopPropagation();
+            openEventDetails(event);
+          });
           cell.append(item);
         }
 
@@ -337,6 +390,20 @@
     if (confirmGroup) confirmGroup.hidden = true;
   }
 
+  function focusShadeBeginning() {
+    if (!shadeRanges.length) return;
+
+    const firstDate = shadeRanges[0].start;
+    const cell = document.querySelector(`.day[data-date="${firstDate}"]`);
+    if (!cell) return;
+
+    cell.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+      inline: 'nearest',
+    });
+  }
+
   function startShadeMode(shade = null) {
     shadeMode = true;
     draggingShade = false;
@@ -366,6 +433,10 @@
 
     paintShadeSelection();
     showShadeEditor();
+
+    if (shade && shadeRanges.length) {
+      window.setTimeout(focusShadeBeginning, 0);
+    }
   }
 
   function stopShadeMode() {
