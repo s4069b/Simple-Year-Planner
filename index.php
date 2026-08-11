@@ -5,6 +5,8 @@ require_once __DIR__ . '/lib/ics.php';
 $year=yp_validate_year($_GET['year'] ?? null);
 $years=yp_allowed_years();
 $currentYear=yp_current_year();
+$settings=yp_settings();
+if($year<$currentYear && !$settings['showPreviousYear']){http_response_code(404);exit('The previous year planner is hidden.');}
 $yearPresent=yp_planner_year_present($year);
 $yearFrozen=$year<$currentYear;
 $calendars=array_values(array_filter(yp_calendars($year), fn($c)=>!empty($c['enabled'])));
@@ -26,7 +28,7 @@ $shading=array_map(function($s){$s['ranges']=shade_ranges_php($s);return $s;},$s
 <div class="sticky-shell">
 <header class="site-header"><div><h1>Year Planner <?=h($year)?></h1></div>
 <nav class="year-nav">
-  <a class="year-arrow <?=$year===$years[0]?'disabled':''?>" href="<?=$year===$years[0]?'#':'?year='.($year-1)?>" aria-label="Previous year">←</a>
+  <a class="year-arrow <?=($year===$years[0]||($year===$currentYear&&!$settings['showPreviousYear']))?'disabled':''?>" href="<?=($year===$years[0]||($year===$currentYear&&!$settings['showPreviousYear']))?'#':'?year='.($year-1)?>" aria-label="Previous year">←</a>
   <span class="year-current"><?=h($year)?></span>
   <a class="year-arrow <?=$year===$years[count($years)-1]?'disabled':''?>" href="<?=$year===$years[count($years)-1]?'#':'?year='.($year+1)?>" aria-label="Next year">→</a>
   <button id="today-button" class="today-button" type="button">Today</button>
@@ -73,5 +75,5 @@ $shading=array_map(function($s){$s['ranges']=shade_ranges_php($s);return $s;},$s
 <div class="small-screen-notice">This planner works on a small screen, but a larger screen gives a much better whole-year view.</div>
 </div>
 <main id="planner" class="planner"></main>
-<script>window.YEAR_PLANNER_DATA = <?=json_encode(['year'=>$year,'currentYear'=>$currentYear,'yearPresent'=>$yearPresent,'yearFrozen'=>$yearFrozen,'events'=>$events,'shading'=>$shading,'calendars'=>$calendars,'intro'=>$intro], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)?>;</script>
+<script>window.YEAR_PLANNER_DATA = <?=json_encode(['year'=>$year,'currentYear'=>$currentYear,'yearPresent'=>$yearPresent,'yearFrozen'=>$yearFrozen,'showPreviousYear'=>$settings['showPreviousYear'],'events'=>$events,'shading'=>$shading,'calendars'=>$calendars,'intro'=>$intro], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)?>;</script>
 <script src="assets/app.js"></script></body></html>

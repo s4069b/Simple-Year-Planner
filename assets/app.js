@@ -681,6 +681,12 @@
       void visitorToggle.offsetWidth;
     }
 
+    const previousVisibilityButton = document.getElementById('previous-year-visibility-button');
+    if (previousVisibilityButton) {
+      previousVisibilityButton.hidden = !(editing && data.year === currentPlannerYear);
+      previousVisibilityButton.textContent = data.showPreviousYear === false ? 'Show Previous' : 'Hide Previous';
+    }
+
     const resetButton = document.getElementById('reset-next-year-button');
     if (resetButton) resetButton.hidden = !(editing && isFutureYear && Boolean(data.yearPresent));
 
@@ -712,25 +718,55 @@
     applyAdminPresentation();
   });
 
-  async function copyCurrentYearIntoNext(overwrite) {
-    if (!adminMode || !isFutureYear) return;
-    const action = overwrite ? 'reset' : 'create';
-    const firstWarning = overwrite
-      ? `Reset ${data.year}? This will DELETE its current calendar and shading setup and replace them with a fresh copy of ${currentPlannerYear}.`
-      : `Create ${data.year} by copying the calendar and shading setup from ${currentPlannerYear}?`;
-    if (!window.confirm(firstWarning)) return;
-    if (overwrite && !window.confirm(`Final confirmation: all existing ${data.year} calendar and shading settings will be replaced. Continue?`)) return;
-    if (!overwrite && !window.confirm(`This creates a separate ${data.year} planner snapshot. Later changes to ${currentPlannerYear} will not automatically alter it. Continue?`)) return;
+  document.getElementById('previous-year-visibility-button')?.addEventListener('click', async () => {
+    if (!adminMode || data.year !== currentPlannerYear) return;
+    const nextValue = data.showPreviousYear === false;
+    const wording = nextValue
+      ? `Show the frozen ${currentPlannerYear - 1} planner to public visitors again?`
+      : `Hide the frozen ${currentPlannerYear - 1} planner from public visitors? The snapshot will be retained and can be shown again later.`;
+    if (!window.confirm(wording)) return;
+    await adminApi('/api/admin/settings', {
+      method: 'POST',
+      body: JSON.stringify({ showPreviousYear: nextValue }),
+    });
+    window.location.reload();
+  });
 
+  async function performNextYearReset(action) {
+    if (!adminMode || !isFutureYear) return;
+    const isBlank = action === 'blank';
+    const warning = isBlank
+      ? `Blank ${data.year}? This will permanently remove its calendars, shading and planner introduction.`
+      : `Copy ${currentPlannerYear} into ${data.year} again? This will replace ${data.year}'s current calendars and shading.`;
+    if (!window.confirm(warning)) return;
+    if (!window.confirm(`Final confirmation: reset ${data.year} now? This cannot be undone.`)) return;
     await adminApi('/api/admin/year/copy', {
       method: 'POST',
-      body: JSON.stringify({ source: currentPlannerYear, target: data.year, overwrite }),
+      body: JSON.stringify({ source: currentPlannerYear, target: data.year, overwrite: true, action }),
     });
     window.location.reload();
   }
 
-  document.getElementById('create-next-year-button')?.addEventListener('click', () => copyCurrentYearIntoNext(false));
-  document.getElementById('reset-next-year-button')?.addEventListener('click', () => copyCurrentYearIntoNext(true));
+  async function copyCurrentYearIntoNext() {
+    if (!adminMode || !isFutureYear) return;
+    if (!window.confirm(`Create ${data.year} by copying the calendar and shading setup from ${currentPlannerYear}?`)) return;
+    if (!window.confirm(`This creates a separate ${data.year} planner snapshot. Later changes to ${currentPlannerYear} will not automatically alter it. Continue?`)) return;
+    await adminApi('/api/admin/year/copy', {
+      method: 'POST',
+      body: JSON.stringify({ source: currentPlannerYear, target: data.year, overwrite: false, action: 'copy' }),
+    });
+    window.location.reload();
+  }
+
+  const resetBackdrop = document.getElementById('next-year-reset-backdrop');
+  function closeNextYearReset() { if (resetBackdrop) resetBackdrop.hidden = true; }
+  document.getElementById('create-next-year-button')?.addEventListener('click', copyCurrentYearIntoNext);
+  document.getElementById('reset-next-year-button')?.addEventListener('click', () => { if (resetBackdrop) resetBackdrop.hidden = false; });
+  document.getElementById('next-year-reset-close')?.addEventListener('click', closeNextYearReset);
+  document.getElementById('next-year-reset-cancel')?.addEventListener('click', closeNextYearReset);
+  resetBackdrop?.addEventListener('click', event => { if (event.target === resetBackdrop) closeNextYearReset(); });
+  document.getElementById('next-year-reset-copy')?.addEventListener('click', () => performNextYearReset('copy'));
+  document.getElementById('next-year-reset-blank')?.addEventListener('click', () => performNextYearReset('blank'));
 
   function openPlannerIntroEditor() {
     if (!adminMode || !yearIsEditable()) return;

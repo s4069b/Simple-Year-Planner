@@ -412,3 +412,6 @@ Issues and pull requests are welcome for improvements that preserve the project'
 ## Planner introduction
 
 Each year can optionally include a short explanatory block above the planner. It may contain explanatory text, up to two links, and an optional logo image URL. If no content is configured, public viewers see nothing. Authorised Cloudflare editors see a subtle prompt and pencil button for editing the introduction.
+### Year visibility and reset
+
+The previous year remains a frozen snapshot. Administrators can hide or re-show it to public visitors without deleting its data. For an existing next-year planner, **Reset** offers two choices: copy the current year's calendars and shading again, or blank the next year completely so it can be rebuilt from scratch.

@@ -31,6 +31,15 @@ function yp_allowed_years(): array {
     return [$y - 1, $y, $y + 1];
 }
 
+function yp_settings(): array {
+    $settings = yp_read_json(YP_DATA_DIR . '/settings.json', []);
+    return ['showPreviousYear' => ($settings['showPreviousYear'] ?? true) !== false];
+}
+
+function yp_write_settings(array $settings): void {
+    yp_write_json(YP_DATA_DIR . '/settings.json', ['showPreviousYear' => ($settings['showPreviousYear'] ?? true) !== false]);
+}
+
 function yp_validate_year(?string $value): int {
     $year = (int)($value ?: yp_current_year());
     if (!in_array($year, yp_allowed_years(), true)) {
@@ -112,6 +121,18 @@ function yp_copy_current_to_next(bool $overwrite): void {
         ];
     }
     yp_write_json(YP_DATA_DIR . '/shading.json', array_merge($keep, $copy));
+}
+
+function yp_blank_next_year(): void {
+    $target = yp_current_year() + 1;
+    $oldCalendars = yp_calendars($target);
+    yp_write_json(yp_calendar_year_path($target), []);
+    yp_write_json(YP_DATA_DIR . '/shading.json', array_values(array_filter(yp_shading(), fn($s) => (int)($s['year'] ?? 0) !== $target)));
+    yp_write_json(YP_DATA_DIR . '/planner-intros.json', array_values(array_filter(yp_planner_intros(), fn($i) => (int)($i['year'] ?? 0) !== $target)));
+    foreach ($oldCalendars as $calendar) {
+        $id = (string)($calendar['id'] ?? '');
+        if ($id !== '') @unlink(YP_CACHE_DIR . '/' . $id . '-' . $target . '.json');
+    }
 }
 
 function yp_shading(): array {

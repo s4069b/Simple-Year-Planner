@@ -1049,3 +1049,16 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .reset-next-year-button:hover { background: #f8fafc; border-color: #94a3b8; }
 .reset-next-year-button { color: #9f1239; border-color: #fecdd3; background: #fff7f8; }
 .toolbar-view-switch { gap: .4rem; }
+
+
+/* Year lifecycle controls */
+.previous-year-visibility-button{display:none;min-height:30px;padding:5px 9px;border:1px solid #cbd3dc;border-radius:8px;background:#fff;color:#45515b;font:inherit;font-size:.76rem;font-weight:600;cursor:pointer;white-space:nowrap}
+.previous-year-visibility-button:hover{background:#f5f7f8;border-color:#aeb8c2}
+.next-year-reset-panel{width:min(560px,calc(100vw - 32px))}
+.next-year-reset-options{display:grid;gap:10px;margin:16px 0 4px}
+.next-year-reset-options>button{display:grid;gap:4px;width:100%;padding:12px 14px;text-align:left;border:1px solid #cbd3dc;border-radius:10px;background:#fff;color:#26323a;font:inherit;cursor:pointer}
+.next-year-reset-options>button:hover{background:#f7f9fa}
+.next-year-reset-options>button span{font-size:.82rem;font-weight:400;color:#66737f}
+.next-year-reset-options .danger-action{border-color:#fecaca;background:#fff8f8;color:#991b1b}
+.next-year-reset-options .danger-action span{color:#9f4f4f}
+@media print{.previous-year-visibility-button,#next-year-reset-backdrop{display:none!important}}

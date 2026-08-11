@@ -49,6 +49,19 @@ type PlannerEvent = {
 const CACHE_SECONDS = 900;
 const TZ = 'Australia/Brisbane';
 
+interface PlannerSettings {
+  showPreviousYear: boolean;
+}
+
+async function plannerSettings(env: Env): Promise<PlannerSettings> {
+  const stored = await readJson<Partial<PlannerSettings>>(env, 'settings.json', {});
+  return { showPreviousYear: stored.showPreviousYear !== false };
+}
+
+async function writePlannerSettings(env: Env, settings: PlannerSettings): Promise<void> {
+  await writeJson(env, 'settings.json', settings);
+}
+
 function json(data: unknown, status = 200): Response {
   return Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 }
@@ -568,6 +581,8 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
 
   const years = allowedYears();
   const activeYear = currentYear();
+  const settings = await plannerSettings(env);
+  if (year < activeYear && !settings.showPreviousYear) return html('The previous year planner is hidden.', 404);
   const yearPresent = await plannerYearPresent(env, year);
   const yearFrozen = year < activeYear;
   const cals = await Promise.all(
@@ -589,7 +604,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
 <div class="sticky-shell">
 <header class="site-header"><div><h1>Year Planner ${year}</h1></div>
 <nav class="year-nav">
-  <a class="year-arrow ${year===years[0]?'disabled':''}" href="${year===years[0]?'#':`?year=${year-1}`}" aria-label="Previous year">←</a>
+  <a class="year-arrow ${(year===years[0] || (year===activeYear && !settings.showPreviousYear))?'disabled':''}" href="${(year===years[0] || (year===activeYear && !settings.showPreviousYear))?'#':`?year=${year-1}`}" aria-label="Previous year">←</a>
   <span class="year-current">${year}</span>
   <a class="year-arrow ${year===years[years.length-1]?'disabled':''}" href="${year===years[years.length-1]?'#':`?year=${year+1}`}" aria-label="Next year">→</a>
   <button id="today-button" class="today-button" type="button">Today</button>
@@ -656,6 +671,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
 
 <div class="toolbar-view-switch" aria-label="View mode">
   <button id="visitor-view-toggle" class="visitor-view-toggle" type="button" aria-pressed="false">Public</button>
+  <button id="previous-year-visibility-button" class="previous-year-visibility-button admin-only" type="button" hidden>${settings.showPreviousYear ? 'Hide Previous' : 'Show Previous'}</button>
   <button id="reset-next-year-button" class="reset-next-year-button admin-only" type="button" hidden>Reset</button>
 </div>
 
@@ -672,7 +688,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
   <p>Use <strong>Shading Toggle</strong> to show or hide planning overlays.</p>
   <p>For authorised editors, these controls become <strong>Calendar Manager</strong> and <strong>Shading Manager</strong>.</p>
   <p>The calendar and shading legends stay visible while you scroll.</p>
-  <p>The previous year is retained as a frozen read-only snapshot. The current year is editable by authorised administrators. The next year can be created from the current year when needed.</p>
+  <p>The previous year is retained as a frozen read-only snapshot and can be hidden from public view by an administrator. The current year is editable by authorised administrators. The next year can be created from the current year when needed.</p>
   <p>Calendars are refreshed automatically on the schedule configured for the host. This repository defaults to every 3 hours. Administrators can also use <strong>Sync</strong> beside a calendar for an immediate refresh.</p>
   <p>If you have administrator access, editing controls appear automatically.</p>
   <p><strong>Administrators:</strong> <a href="/admin">Log in to edit the planner</a>.</p>
@@ -815,6 +831,21 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
   </form>
 </div>
 
+<div id="next-year-reset-backdrop" class="event-detail-backdrop" hidden>
+  <section class="event-detail-panel next-year-reset-panel" role="dialog" aria-modal="true" aria-labelledby="next-year-reset-title">
+    <div class="event-detail-header">
+      <div><div class="event-detail-calendar">Next-year planner</div><h2 id="next-year-reset-title">Reset ${year}</h2></div>
+      <button id="next-year-reset-close" type="button" aria-label="Close reset options">×</button>
+    </div>
+    <p>Choose how to reset ${year}. Either option replaces the existing ${year} setup and cannot be undone.</p>
+    <div class="next-year-reset-options">
+      <button id="next-year-reset-copy" class="primary" type="button"><strong>Copy ${activeYear} again</strong><span>Replace ${year} calendars and shading with a fresh copy of ${activeYear}.</span></button>
+      <button id="next-year-reset-blank" class="danger-action" type="button"><strong>Blank ${year}</strong><span>Remove all ${year} calendars, shading and planner introduction, leaving an empty planner ready for setup.</span></button>
+    </div>
+    <div class="event-detail-actions"><button id="next-year-reset-cancel" type="button">Cancel</button></div>
+  </section>
+</div>
+
 <div id="event-detail-backdrop" class="event-detail-backdrop" hidden>
   <section id="event-detail-panel" class="event-detail-panel" role="dialog" aria-modal="true" aria-labelledby="event-detail-title">
     <div class="event-detail-header">
@@ -834,7 +865,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
   </section>
 </div>
 
-<script>window.YEAR_PLANNER_DATA=${JSON.stringify({year, currentYear: activeYear, yearPresent, yearFrozen, events, shading: shades, calendars: cals, intro}).replace(/</g,'\\u003c')};</script>
+<script>window.YEAR_PLANNER_DATA=${JSON.stringify({year, currentYear: activeYear, yearPresent, yearFrozen, showPreviousYear: settings.showPreviousYear, events, shading: shades, calendars: cals, intro}).replace(/</g,'\\u003c')};</script>
 <script src="/app.js"></script></body></html>`);
 }
 
@@ -848,6 +879,7 @@ async function apiConfig(env: Env, year = currentYear()): Promise<Response> {
     year,
     yearPresent: await plannerYearPresent(env, year),
     yearFrozen: year < currentYear(),
+    showPreviousYear: (await plannerSettings(env)).showPreviousYear,
   });
 }
 
@@ -865,6 +897,14 @@ async function handleAdminApi(request: Request, env: Env, path: string): Promise
   if (request.method === 'GET' && path === '/api/admin/config') {
     const year = validYear(new URL(request.url).searchParams.get('year')) || currentYear();
     return apiConfig(env, year);
+  }
+
+  if (request.method === 'POST' && path === '/api/admin/settings') {
+    const body = await parseBody(request);
+    const settings = await plannerSettings(env);
+    if (typeof body.showPreviousYear === 'boolean') settings.showPreviousYear = body.showPreviousYear;
+    await writePlannerSettings(env, settings);
+    return json({ok:true, settings});
   }
 
   if (request.method === 'POST' && path === '/api/admin/calendar') {
@@ -1020,10 +1060,22 @@ async function handleAdminApi(request: Request, env: Env, path: string): Promise
     const source = Number(body.source);
     const target = Number(body.target);
     const overwrite = body.overwrite === true;
+    const action = body.action === 'blank' ? 'blank' : 'copy';
     const active = currentYear();
-    if (source !== active || target !== active + 1) return json({ok:false,error:'Only the current year can be copied into next year.'},400);
+    if (source !== active || target !== active + 1) return json({ok:false,error:'Only the current year and next year can be used for this operation.'},400);
     const exists = await plannerYearPresent(env, target);
     if (exists && !overwrite) return json({ok:false,error:`${target} already exists. Use Reset if you want to replace it.`},409);
+
+    if (action === 'blank') {
+      const oldTargetCalendars = await calendars(env, target);
+      await writeJson(env, calendarYearKey(target), []);
+      const shadeItems = (await shading(env)).filter(item => item.year !== target);
+      await writeJson(env, 'shading.json', shadeItems);
+      const intros = (await plannerIntros(env)).filter(item => item.year !== target);
+      await writeJson(env, 'planner-intros.json', intros);
+      for (const calendar of oldTargetCalendars) await env.DATA.delete(`cache/${calendar.id}-${target}.json`);
+      return json({ok:true, year:target, action:'blank'});
+    }
 
     const sourceCalendars = await calendars(env, source);
     const targetCalendars = sourceCalendars.map(calendar => ({ ...calendar }));
