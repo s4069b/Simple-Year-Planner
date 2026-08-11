@@ -488,15 +488,18 @@ body.shade-select-mode .day[data-date]{cursor:crosshair}
   background:#f3f6f8;
   border-color:#b9c3cc;
 }
-.day.today-focus{
-  position:relative;
-  /* Keep the temporary Today highlight above spanning multi-day event bars. */
-  z-index:30;
-  box-shadow:
-    inset 0 0 0 2px #8aa7b8,
-    0 0 0 4px rgba(138,167,184,.16);
-  transition:box-shadow .35s ease;
+.today-focus-overlay{
+  position:absolute;
+  z-index:100;
+  pointer-events:none;
+  box-sizing:border-box;
+  border:2px solid #8aa7b8;
+  box-shadow:0 0 0 4px rgba(138,167,184,.16);
+  border-radius:3px;
+  opacity:0;
+  transition:opacity .12s ease, box-shadow .35s ease;
 }
+.today-focus-overlay.is-active{opacity:1}
 
 .planner-intro{
   position:relative;
@@ -740,6 +743,7 @@ body:not(.is-admin) .planner-intro--empty{
 .event-detail-calendar{font-size:.78rem;font-weight:700;color:#66737f}
 .event-detail-row{margin:8px 0;color:#35414a;font-size:.92rem}
 .event-detail-description{margin:14px 0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.45}
+.event-detail-description a{color:#245a73;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}
 .event-detail-actions{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:16px;padding-top:12px;border-top:1px solid #e2e6eb}
 .event-detail-actions a,.event-detail-actions button{padding:7px 10px;border:1px solid #cbd3dc;border-radius:6px;background:#fff;color:inherit;font:inherit;text-decoration:none;cursor:pointer}
 

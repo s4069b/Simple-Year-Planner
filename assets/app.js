@@ -54,6 +54,29 @@
     eventBackdrop.hidden = true;
   }
 
+  function appendLinkifiedText(container, text) {
+    container.replaceChildren();
+    const value = String(text || '');
+    const urlPattern = /(?:https?:\/\/|www\.)[^\s<>()]+/gi;
+    let cursor = 0;
+    for (const match of value.matchAll(urlPattern)) {
+      const index = match.index ?? 0;
+      if (index > cursor) container.append(document.createTextNode(value.slice(cursor, index)));
+      let raw = match[0];
+      let trailing = '';
+      while (/[.,;:!?]$/.test(raw)) { trailing = raw.slice(-1) + trailing; raw = raw.slice(0, -1); }
+      const anchor = document.createElement('a');
+      anchor.href = raw.startsWith('www.') ? `https://${raw}` : raw;
+      anchor.textContent = raw;
+      anchor.target = '_blank';
+      anchor.rel = 'noopener';
+      container.append(anchor);
+      if (trailing) container.append(document.createTextNode(trailing));
+      cursor = index + match[0].length;
+    }
+    if (cursor < value.length) container.append(document.createTextNode(value.slice(cursor)));
+  }
+
   function openEventDetails(event) {
     if (!eventBackdrop) return;
     document.getElementById('event-detail-title').textContent = event.title || 'Untitled event';
@@ -65,15 +88,17 @@
     location.hidden = !event.location;
 
     const description = document.getElementById('event-detail-description');
-    description.textContent = event.description || '';
+    appendLinkifiedText(description, event.description || '');
     description.hidden = !event.description;
 
     const link = document.getElementById('event-detail-link');
     if (event.url) {
       link.href = event.url;
+      link.textContent = event.url;
       link.hidden = false;
     } else {
       link.removeAttribute('href');
+      link.textContent = '';
       link.hidden = true;
     }
 
@@ -846,11 +871,23 @@
       inline: 'nearest',
     });
 
-    cell.classList.remove('today-focus');
-    requestAnimationFrame(() => {
-      cell.classList.add('today-focus');
-      window.setTimeout(() => cell.classList.remove('today-focus'), 2200);
-    });
+    document.querySelectorAll('.today-focus-overlay').forEach(el => el.remove());
+    const weekRow = cell.closest('.week-row');
+    if (!weekRow) return;
+
+    const rowRect = weekRow.getBoundingClientRect();
+    const cellRect = cell.getBoundingClientRect();
+    const overlay = document.createElement('div');
+    overlay.className = 'today-focus-overlay';
+    overlay.setAttribute('aria-hidden', 'true');
+    overlay.style.left = `${cellRect.left - rowRect.left}px`;
+    overlay.style.top = `${cellRect.top - rowRect.top}px`;
+    overlay.style.width = `${cellRect.width}px`;
+    overlay.style.height = `${cellRect.height}px`;
+    weekRow.append(overlay);
+
+    requestAnimationFrame(() => overlay.classList.add('is-active'));
+    window.setTimeout(() => overlay.remove(), 3000);
   }
 
   renderPlanner();

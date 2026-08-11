@@ -573,7 +573,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
 <section class="toolbar">
 <div class="toolbar-flow">
   <details class="toolbar-control" data-manager="calendar">
-    <summary><span class="public-manager-label">Calendar</span><span class="admin-manager-label" hidden>Calendar Manager</span></summary>
+    <summary><span class="public-manager-label">Calendar Toggle</span><span class="admin-manager-label" hidden>Calendar Manager</span></summary>
     <div class="filter-panel">
       <div class="filter-list">${cals.length
         ? cals.map(c => `<div class="filter-item-row"><div class="calendar-filter-info"><label><input type="checkbox" class="calendar-toggle" data-calendar="${esc(c.id)}" checked><span class="swatch" style="background:${esc(c.colour)}"></span>${esc(c.name)}</label><span class="calendar-last-synced" data-last-synced="${esc(c.lastSynced || '')}">${c.lastSynced ? `Last synced ${esc(c.lastSynced)}` : 'Not synced yet'}</span></div><div class="filter-item-actions admin-only" hidden><button type="button" class="calendar-sync-button" data-calendar-sync="${esc(c.id)}">Sync</button><button type="button" class="calendar-edit-button" data-calendar-edit="${esc(c.id)}">Edit</button></div></div>`).join('')
@@ -593,7 +593,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
   </div>
 
   <details class="toolbar-control" data-manager="shading">
-    <summary><span class="public-manager-label">Shading</span><span class="admin-manager-label" hidden>Shading Manager</span></summary>
+    <summary><span class="public-manager-label">Shading Toggle</span><span class="admin-manager-label" hidden>Shading Manager</span></summary>
     <div class="filter-panel">
       <div class="filter-list">${shades.length
         ? shades.map(s => `<div class="filter-item-row"><label><input type="checkbox" class="shade-toggle" data-shade="${esc(s.id)}" checked><span class="swatch" style="background:${esc(s.colour)}"></span>${esc(s.name)}</label><button type="button" class="admin-only shade-edit-button" data-shade-edit="${esc(s.id)}" hidden>Edit</button></div>`).join('')
@@ -626,8 +626,8 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
     <strong>Year Planner help</strong>
     <button id="planner-help-close" type="button" aria-label="Close help">×</button>
   </div>
-  <p>Use <strong>Calendar</strong> to show or hide public calendars.</p>
-  <p>Use <strong>Shading</strong> to show or hide planning overlays.</p>
+  <p>Use <strong>Calendar Toggle</strong> to show or hide public calendars.</p>
+  <p>Use <strong>Shading Toggle</strong> to show or hide planning overlays.</p>
   <p>For authorised editors, these controls become <strong>Calendar Manager</strong> and <strong>Shading Manager</strong>.</p>
   <p>The calendar and shading legends stay visible while you scroll.</p>
   <p>The previous year, current year and next year are available.</p>
