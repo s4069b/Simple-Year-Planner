@@ -426,7 +426,7 @@ body.shade-select-mode .day[data-date]{cursor:crosshair}
 }
 
 /* Public mode: Calendar/Shading read like compact legend headers. */
-.toolbar-control>summary{
+.toolbar-control>.toolbar-control-button{
   display:flex;
   align-items:center;
   min-height:30px;
@@ -437,8 +437,8 @@ body.shade-select-mode .day[data-date]{cursor:crosshair}
   font-weight:700;
   color:#59656f;
 }
-.toolbar-control>summary:hover,
-.toolbar-control>summary:focus{
+.toolbar-control>.toolbar-control-button:hover,
+.toolbar-control>.toolbar-control-button:focus{
   background:#f5f7f8;
   border-color:#d9dee5;
 }
@@ -450,15 +450,15 @@ body.shade-select-mode .day[data-date]{cursor:crosshair}
 .toolbar-control--admin{
   min-width:max-content;
 }
-.toolbar-control--admin>summary{
+.toolbar-control--admin>.toolbar-control-button{
   width:max-content;
   white-space:nowrap;
   border-color:#b9d7bf;
   background:#eef8f0;
   color:#315b39;
 }
-.toolbar-control--admin>summary:hover,
-.toolbar-control--admin>summary:focus{
+.toolbar-control--admin>.toolbar-control-button:hover,
+.toolbar-control--admin>.toolbar-control-button:focus{
   background:#e4f3e7;
   border-color:#a8cdb0;
   color:#274b2e;
@@ -837,7 +837,7 @@ body.is-visitor-preview .visitor-view-toggle{background:#eef6fa;border-color:#aa
   }
   .toolbar{align-items:stretch}
   .toolbar-flow{grid-template-columns:1fr;align-items:stretch}
-  .toolbar-control>summary{width:max-content}
+  .toolbar-control>.toolbar-control-button{width:max-content}
   .toolbar-legend{padding-left:4px}
   .toolbar-right{display:flex;align-items:flex-start;gap:6px}
   .planner{grid-template-columns:1fr;padding:8px}
@@ -917,7 +917,7 @@ body.has-admin-access .toolbar-view-switch{visibility:visible}
   grid-template-columns:9.6rem minmax(0,1fr) 9.6rem minmax(0,1fr);
 }
 .toolbar-control{min-width:0;width:9.6rem}
-.toolbar-control>summary{box-sizing:border-box;width:100%;justify-content:space-between}
+.toolbar-control>.toolbar-control-button{box-sizing:border-box;width:100%;justify-content:space-between}
 
 .week-row{
   position:relative;
@@ -953,7 +953,7 @@ body.has-admin-access .toolbar-view-switch{visibility:visible}
 @media(max-width:720px){
   .toolbar-flow{grid-template-columns:1fr}
   .toolbar-control{width:auto}
-  .toolbar-control>summary{width:max-content;min-width:9.6rem}
+  .toolbar-control>.toolbar-control-button{width:max-content;min-width:9.6rem}
   .week-event-lanes{top:1.25rem;grid-auto-rows:17px;min-height:calc(var(--multi-event-lanes,0) * 17px)}
   .week-row .day-events{margin-top:calc(var(--multi-event-lanes,0) * 17px + 2px)}
 }
@@ -989,3 +989,8 @@ body.has-admin-access .toolbar-view-switch{visibility:visible}
 .toolbar-control[open] .toolbar-control-caret{transform:rotate(180deg)}
 .toolbar-control--admin > .toolbar-control-button{font-weight:750}
 @media(max-width:700px){.toolbar-control>.toolbar-control-button{width:max-content;min-width:9.6rem}}
+
+/* Real toolbar buttons: panels are hidden unless the wrapper carries [open]. */
+.toolbar-control:not([open]) > .filter-panel{display:none}
+.toolbar-control[open] > .filter-panel{display:block}
+.toolbar-control-button{appearance:none;-webkit-appearance:none}

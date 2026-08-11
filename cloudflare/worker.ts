@@ -572,7 +572,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
 
 <section class="toolbar">
 <div class="toolbar-flow">
-  <details class="toolbar-control" data-manager="calendar">
+  <div class="toolbar-control" data-manager="calendar">
     <button class="toolbar-control-button" type="button" data-manager-toggle="calendar" aria-expanded="false"><span class="public-manager-label">Calendar Toggle</span><span class="admin-manager-label" hidden>Calendar Manager</span><span class="toolbar-control-caret" aria-hidden="true">▾</span></button>
     <div class="filter-panel">
       <div class="filter-list">${cals.length
@@ -583,7 +583,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
         <button id="add-calendar-button" class="admin-only toolbar-admin-action" type="button" hidden>+ Add calendar</button>
       </div>
     </div>
-  </details>
+  </div>
 
   <div id="calendar-legend" class="toolbar-legend calendar-legend ${cals.length ? '' : 'toolbar-legend--empty'}">
     ${cals.length
@@ -592,7 +592,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
     }
   </div>
 
-  <details class="toolbar-control" data-manager="shading">
+  <div class="toolbar-control" data-manager="shading">
     <button class="toolbar-control-button" type="button" data-manager-toggle="shading" aria-expanded="false"><span class="public-manager-label">Shading Toggle</span><span class="admin-manager-label" hidden>Shading Manager</span><span class="toolbar-control-caret" aria-hidden="true">▾</span></button>
     <div class="filter-panel">
       <div class="filter-list">${shades.length
@@ -603,7 +603,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
         <button id="add-shading-button" class="admin-only toolbar-admin-action" type="button" hidden>+ Add shading</button>
       </div>
     </div>
-  </details>
+  </div>
 
   <div id="shading-legend" class="toolbar-legend shading-legend ${shades.length ? '' : 'toolbar-legend--empty'}">
     ${shades.length

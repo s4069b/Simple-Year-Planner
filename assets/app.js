@@ -1058,8 +1058,8 @@
       const shade = data.shading.find(item => item.id === button.dataset.shadeEdit);
       if (shade) {
         // Close the Shading Manager list before opening the separate editor.
-        const manager = document.querySelector('details[data-manager="shading"]');
-        if (manager) { manager.open = false; manager.querySelector('.toolbar-control-button')?.setAttribute('aria-expanded', 'false'); }
+        const manager = document.querySelector('[data-manager="shading"]');
+        if (manager) { manager.removeAttribute('open'); manager.querySelector('.toolbar-control-button')?.setAttribute('aria-expanded', 'false'); }
         startShadeMode(shade);
       }
     });
