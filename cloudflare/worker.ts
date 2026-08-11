@@ -613,8 +613,11 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
   </div>
 </div>
 
-<div class="toolbar-right">
+<div class="toolbar-view-switch" aria-label="View mode">
   <button id="visitor-view-toggle" class="visitor-view-toggle" type="button" aria-pressed="false">Public</button>
+</div>
+
+<div class="toolbar-right">
   <button id="planner-help-button" class="planner-help-button ${(cals.length===0 || shades.length===0) ? 'planner-help-button--attention' : ''}" type="button" title="Help">?</button>
 </div>
 

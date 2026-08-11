@@ -139,28 +139,53 @@
       heading.textContent = monthNames[month];
       section.append(heading);
 
-      const grid = document.createElement('div');
-      grid.className = 'month-grid';
+      const calendar = document.createElement('div');
+      calendar.className = 'month-calendar';
 
+      const weekdayRow = document.createElement('div');
+      weekdayRow.className = 'weekday-row';
       for (const weekday of weekdays) {
         const header = document.createElement('div');
         header.className = 'weekday';
         header.textContent = weekday;
-        grid.append(header);
+        weekdayRow.append(header);
       }
+      calendar.append(weekdayRow);
 
       const first = new Date(data.year, month, 1);
       const firstOffset = first.getDay();
-      for (let i = 0; i < firstOffset; i++) {
-        const blank = document.createElement('div');
-        blank.className = 'day blank';
-        grid.append(blank);
+      const days = new Date(data.year, month + 1, 0).getDate();
+      const weekCount = Math.ceil((firstOffset + days) / 7);
+      const weeks = [];
+      const dayCells = new Map();
+
+      for (let week = 0; week < weekCount; week++) {
+        const wrap = document.createElement('div');
+        wrap.className = 'week-row';
+
+        const eventLanes = document.createElement('div');
+        eventLanes.className = 'week-event-lanes';
+
+        const daysGrid = document.createElement('div');
+        daysGrid.className = 'week-days';
+
+        wrap.append(eventLanes, daysGrid);
+        calendar.append(wrap);
+        weeks.push({ wrap, eventLanes, daysGrid });
       }
 
-      const days = new Date(data.year, month + 1, 0).getDate();
-      const dayCells = new Map();
-      for (let day = 1; day <= days; day++) {
-        const date = iso(new Date(data.year, month, day));
+      const totalSlots = weekCount * 7;
+      for (let slot = 0; slot < totalSlots; slot++) {
+        const dayNumber = slot - firstOffset + 1;
+        const week = Math.floor(slot / 7);
+        if (dayNumber < 1 || dayNumber > days) {
+          const blank = document.createElement('div');
+          blank.className = 'day blank';
+          weeks[week].daysGrid.append(blank);
+          continue;
+        }
+
+        const date = iso(new Date(data.year, month, dayNumber));
         const cell = document.createElement('div');
         cell.className = 'day';
         cell.dataset.date = date;
@@ -168,23 +193,16 @@
 
         const number = document.createElement('div');
         number.className = 'date-number';
-        number.textContent = String(day);
+        number.textContent = String(dayNumber);
         cell.append(number);
-
-        const multiDayHost = document.createElement('div');
-        multiDayHost.className = 'multi-day-lanes';
-        cell.append(multiDayHost);
 
         const eventHost = document.createElement('div');
         eventHost.className = 'day-events';
         cell.append(eventHost);
-        dayCells.set(date, { cell, multiDayHost, eventHost, day });
-
-        grid.append(cell);
+        dayCells.set(date, { cell, eventHost, day: dayNumber });
+        weeks[week].daysGrid.append(cell);
       }
 
-      // Ordinary one-day events stay inside their day cell. Multi-day events are
-      // rendered below as one continuous bar per visible week segment.
       for (const event of events) {
         const range = eventRange(event);
         if (!range || range.multiDay) continue;
@@ -233,34 +251,18 @@
           while (lanes[lane]?.some(([start, end]) => !(segmentEndColumn < start || segment.column > end))) lane++;
           if (!lanes[lane]) lanes[lane] = [];
           lanes[lane].push([segment.column, segmentEndColumn]);
-          segment.lane = lane;
 
-          // One event bar per visible week segment. The day cells reserve
-          // this lane, so the bar does not cover the date number or ordinary events.
-          // Keeping colour and label in the same element avoids Safari/grid drift.
           const bar = makeEventButton(segment.event, 'event multi-day-segment');
           bar.textContent = segment.event.title;
           bar.style.gridColumn = `${segment.column} / span ${segment.span}`;
-          bar.style.gridRow = String(week + 2);
-          bar.style.setProperty('--event-lane', String(lane));
+          bar.style.gridRow = String(lane + 1);
           bar.title = segment.event.title;
-          grid.append(bar);
+          weeks[week].eventLanes.append(bar);
         }
-
-        const laneCount = lanes.length;
-        for (let column = 1; column <= 7; column++) {
-          const cellIndex = week * 7 + (column - 1) - firstOffset;
-          const day = cellIndex + 1;
-          if (day >= 1 && day <= days) {
-            const date = iso(new Date(data.year, month, day));
-            const target = dayCells.get(date);
-            target?.cell.style.setProperty('--multi-event-lanes', String(laneCount));
-            target?.multiDayHost.style.setProperty('--multi-event-lanes', String(laneCount));
-          }
-        }
+        weeks[week].eventLanes.style.setProperty('--multi-event-lanes', String(lanes.length));
       }
 
-      section.append(grid);
+      section.append(calendar);
       planner.append(section);
     }
 

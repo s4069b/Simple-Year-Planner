@@ -847,3 +847,61 @@ body.is-visitor-preview .visitor-view-toggle{background:#eef6fa;border-color:#aa
 @media print{
   .small-screen-notice,.visitor-view-toggle{display:none!important}
 }
+
+
+/* --- Fixed week structure: multi-day events reserve their own rows --- */
+.month-calendar{display:block;min-width:0}
+.weekday-row,.week-days,.week-event-lanes{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
+.week-row{display:block;min-width:0}
+.week-event-lanes{
+  position:relative;
+  z-index:2;
+  grid-auto-rows:18px;
+  min-height:calc(var(--multi-event-lanes,0) * 18px);
+  padding:2px 0 0;
+  background:transparent;
+}
+.week-event-lanes:empty{display:none}
+.week-days{position:relative;z-index:1}
+.week-days .day{min-height:92px}
+.multi-day-segment{
+  position:relative!important;
+  z-index:auto!important;
+  align-self:center;
+  height:16px;
+  margin:0 2px;
+  padding:1px 5px;
+  border:0;
+  border-radius:4px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  font-size:.66rem;
+  font-weight:400;
+  line-height:1;
+  cursor:pointer;
+}
+/* The old overlay host is no longer rendered. */
+.multi-day-lanes{display:none!important}
+
+/* Public/Edit has a permanent toolbar slot so Safari never stacks it under Help. */
+.toolbar{display:grid;grid-template-columns:minmax(0,1fr) max-content max-content;align-items:start}
+.toolbar-left{min-width:0}
+.toolbar-view-switch{display:flex;align-items:center;justify-content:flex-end;min-width:58px;visibility:hidden}
+body.has-admin-access .toolbar-view-switch{visibility:visible}
+.visitor-view-toggle{display:inline-flex!important;align-items:center;justify-content:center;min-width:58px}
+.toolbar-right{display:flex;align-items:center;justify-content:flex-end;min-width:30px}
+
+@media(max-width:720px){
+  .toolbar{grid-template-columns:minmax(0,1fr) max-content max-content}
+  .week-days .day{min-height:78px}
+  .week-event-lanes{grid-auto-rows:17px;min-height:calc(var(--multi-event-lanes,0) * 17px)}
+  .multi-day-segment{height:15px;font-size:.58rem;padding-inline:3px}
+}
+@media print{
+  .toolbar-view-switch{display:none!important}
+}
