@@ -443,8 +443,16 @@ body.shade-select-mode .day[data-date]{cursor:crosshair}
   border-color:#d9dee5;
 }
 
-/* Admin mode: managers become subtle green controls. */
+/* Admin mode: managers become subtle green controls.
+   Admin mode is detected after first paint, so force the manager control to
+   recompute/reserve the full intrinsic width of the longer label. This avoids
+   Safari retaining the public-label flex width until the <details> is opened. */
+.toolbar-control--admin{
+  min-width:max-content;
+}
 .toolbar-control--admin>summary{
+  width:max-content;
+  white-space:nowrap;
   border-color:#b9d7bf;
   background:#eef8f0;
   color:#315b39;
