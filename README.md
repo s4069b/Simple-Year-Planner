@@ -1,6 +1,6 @@
 # Simple Year Planner
 
-**Version 1.0.0**
+**Version 1.1.0-rc1**
 
 A small, self-hostable year planner for displaying **public ICS calendars** alongside optional **shading layers** such as school terms, holidays, ministry periods, shutdowns, or other planning blocks.
 
@@ -11,6 +11,8 @@ The project is deliberately simple:
 - no Microsoft Graph or OAuth integration;
 - no private-calendar access;
 - previous year, current year and next year only;
+- previous-year planners are frozen snapshots;
+- next-year planners are explicitly created by copying the current year’s calendar and shading setup;
 - calendar and shading configuration stored as JSON/files;
 - inline administration for authorised users in Cloudflare mode, with a simple protected `/admin/` page for PHP hosting;
 - automatic calendar refresh, with manual per-calendar sync available.
@@ -46,16 +48,14 @@ In **Cloudflare mode**, authorised editors can additionally:
 - delete shading layers;
 - use movable calendar and shading editor panels;
 - add a year-specific planner introduction with explanation text, up to two links, and an optional logo image URL;
-- switch between **Edit** and **Public** views without logging out.
+- switch between **Edit** and **Public** views without logging out;
+- create next year from the current year’s calendar/shading setup;
+- reset next year back to a fresh copy of the current year, with warnings and confirmation;
+- view previous years as hard read-only snapshots.
 
 In **PHP mode**, the public planner uses the same browser UI and calendar rendering, while `/admin/` provides a deliberately simpler server-side editor for calendars, basic shading ranges, and manual refresh.
 
 Administration is intentionally protected **outside the application** by the hosting platform.
-
----
-
-# ScreenShots
-are available in the screenshot directory
 
 ---
 
@@ -141,11 +141,7 @@ Cloudflare mode includes this Cron Trigger in `wrangler.jsonc`:
 0 */3 * * *
 ```
 
-This refreshes all enabled calendars every **3 hours** for:
-
-- the previous year;
-- the current year;
-- the next year.
+This refreshes all enabled calendars every **3 hours** for the **current year** and for the **next year once it has been created**. The previous year is deliberately not refreshed because it is a frozen snapshot.
 
 Cloudflare Cron schedules use UTC, but this particular schedule simply means every three hours, so timezone does not materially affect it.
 
@@ -202,7 +198,7 @@ The project intentionally does not maintain its own user accounts.
 
 ## 4. Add calendars and shading
 
-Open `/admin/` as an authorised administrator. Add one or more **public ICS URLs**, assign colours, then add optional shading ranges. The PHP admin is intentionally simpler than the Cloudflare inline editor.
+Open `/admin/` as an authorised administrator. Choose the planner year, add one or more **public ICS URLs**, assign colours, then add optional shading ranges. The previous year is read-only. The next year can be created or reset from the current year on this admin page. The PHP admin is intentionally simpler than the Cloudflare inline editor.
 
 ## 5. Configure automatic syncing
 
@@ -253,7 +249,7 @@ Administrators can still use the manual refresh control in `/admin/` for an imme
 Persistent configuration:
 
 ```text
-data/calendars.json
+data/calendars-YYYY.json
 data/shading.json
 ```
 
@@ -261,9 +257,23 @@ In Cloudflare mode these are stored as equivalent R2 objects.
 
 Calendar event caches are rebuildable and are stored per calendar and year.
 
-Only the **previous year, current year and next year** are maintained. Older planner data is intentionally not retained by the application.
+Only the **previous year, current year and next year** are maintained. Calendar configuration is snapshotted per year. The previous year and its cached events are frozen; automatic sync does not alter it. Next year remains absent until an administrator copies the current year into it. Older planner data is intentionally not retained by the application.
 
 If a public ICS feed is temporarily unavailable, the last successful cached copy can continue to be used.
+
+---
+
+# Planner year lifecycle
+
+The three-year window has deliberate lifecycle rules:
+
+- **Previous year:** frozen/read-only. Calendar configuration, shading and cached calendar events are not edited or automatically refreshed. Cloudflare editors see a reminder when viewing the frozen year.
+- **Current year:** normal editable planner.
+- **Next year:** not created automatically. When an authorised Cloudflare editor navigates to the unprepared next year, the planner offers to copy the current year’s calendar sources and shading. The new year is then independent.
+- **Reset next year:** Cloudflare editors get a **Reset** button beside the Public/Edit control on a prepared next-year planner. Reset requires warnings/confirmation and replaces next-year calendar/shading setup with a fresh copy of the current year.
+- **PHP hosting:** the same copy/reset and freeze rules are enforced from the protected `/admin/` page rather than inline on the public planner.
+
+Planner-introduction text is not copied or reset; it remains year-specific.
 
 ---
 

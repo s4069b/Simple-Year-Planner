@@ -7,6 +7,13 @@
   let adminMode = false;
   let visitorView = false;
   let adminConfig = null;
+
+  const currentPlannerYear = Number(data.currentYear || new Date().getFullYear());
+  const isFrozenYear = Boolean(data.yearFrozen || data.year < currentPlannerYear);
+  const isFutureYear = data.year > currentPlannerYear;
+  function yearIsEditable() {
+    return !isFrozenYear && (!isFutureYear || Boolean(data.yearPresent));
+  }
   let shadeMode = false;
   let shadeStart = '';
   let shadeEnd = '';
@@ -649,7 +656,9 @@
     document.body.classList.toggle('is-admin', editing);
     document.body.classList.toggle('is-visitor-preview', adminMode && visitorView);
 
-    document.querySelectorAll('.admin-only').forEach(el => { el.hidden = !editing; });
+    const editable = yearIsEditable();
+    document.querySelectorAll('.admin-only').forEach(el => { el.hidden = !editing || !editable; });
+    document.querySelectorAll('.admin-access-only').forEach(el => { el.hidden = !adminMode; });
     document.querySelectorAll('.public-manager-label').forEach(el => { el.hidden = editing; });
     document.querySelectorAll('.admin-manager-label').forEach(el => { el.hidden = !editing; });
     document.querySelectorAll('.toolbar-control[data-manager]').forEach(el => {
@@ -671,11 +680,17 @@
       // one layout read so the Public/Edit control is painted immediately.
       void visitorToggle.offsetWidth;
     }
+
+    const resetButton = document.getElementById('reset-next-year-button');
+    if (resetButton) resetButton.hidden = !(editing && isFutureYear && Boolean(data.yearPresent));
+
+    const lifecycle = document.getElementById('year-lifecycle-banner');
+    if (lifecycle && adminMode && (isFrozenYear || !data.yearPresent)) lifecycle.hidden = false;
   }
 
   async function detectAdmin() {
     try {
-      adminConfig = await adminApi('/api/admin/config');
+      adminConfig = await adminApi(`/api/admin/config?year=${encodeURIComponent(data.year)}`);
       adminMode = true;
       visitorView = localStorage.getItem('simple-year-planner-view') === 'public';
       bindToolbarManagerButtons();
@@ -697,8 +712,28 @@
     applyAdminPresentation();
   });
 
+  async function copyCurrentYearIntoNext(overwrite) {
+    if (!adminMode || !isFutureYear) return;
+    const action = overwrite ? 'reset' : 'create';
+    const firstWarning = overwrite
+      ? `Reset ${data.year}? This will DELETE its current calendar and shading setup and replace them with a fresh copy of ${currentPlannerYear}.`
+      : `Create ${data.year} by copying the calendar and shading setup from ${currentPlannerYear}?`;
+    if (!window.confirm(firstWarning)) return;
+    if (overwrite && !window.confirm(`Final confirmation: all existing ${data.year} calendar and shading settings will be replaced. Continue?`)) return;
+    if (!overwrite && !window.confirm(`This creates a separate ${data.year} planner snapshot. Later changes to ${currentPlannerYear} will not automatically alter it. Continue?`)) return;
+
+    await adminApi('/api/admin/year/copy', {
+      method: 'POST',
+      body: JSON.stringify({ source: currentPlannerYear, target: data.year, overwrite }),
+    });
+    window.location.reload();
+  }
+
+  document.getElementById('create-next-year-button')?.addEventListener('click', () => copyCurrentYearIntoNext(false));
+  document.getElementById('reset-next-year-button')?.addEventListener('click', () => copyCurrentYearIntoNext(true));
+
   function openPlannerIntroEditor() {
-    if (!adminMode) return;
+    if (!adminMode || !yearIsEditable()) return;
 
     const panel = document.getElementById('planner-intro-editor');
     const form = document.getElementById('planner-intro-form');
@@ -859,7 +894,7 @@
     }
 
     try {
-      await adminApi('/api/admin/sync/' + encodeURIComponent(id), {
+      await adminApi('/api/admin/sync/' + encodeURIComponent(id) + `?year=${encodeURIComponent(data.year)}`, {
         method: 'POST',
         body: '{}',
       });
@@ -964,8 +999,11 @@
 
   // Toolbar pop-outs close when clicking outside.
   document.addEventListener('click', event => {
-    document.querySelectorAll('.toolbar details[open]').forEach(details => {
-      if (!details.contains(event.target)) details.removeAttribute('open');
+    document.querySelectorAll('.toolbar-control[data-manager][open]').forEach(control => {
+      if (!control.contains(event.target)) {
+        control.removeAttribute('open');
+        control.querySelector('.toolbar-control-button')?.setAttribute('aria-expanded', 'false');
+      }
     });
   });
 
@@ -986,7 +1024,7 @@
     if (helpPanel) helpPanel.hidden = true;
   });
 
-  document.getElementById('add-calendar-button')?.addEventListener('click', () => openCalendarEditor());
+  document.getElementById('add-calendar-button')?.addEventListener('click', () => { if (yearIsEditable()) openCalendarEditor(); });
 
   document.querySelectorAll('[data-calendar-edit]').forEach(button => {
     button.addEventListener('click', event => {
@@ -1018,6 +1056,7 @@
         colour: fd.get('colour'),
         url: fd.get('url'),
         enabled: form.elements.enabled.checked,
+        year: data.year,
       }),
     });
 
@@ -1032,7 +1071,7 @@
 
   document.getElementById('calendar-delete-confirm')?.addEventListener('click', async () => {
     if (!editingCalendarId) return;
-    await adminApi('/api/admin/calendar/' + encodeURIComponent(editingCalendarId), {
+    await adminApi('/api/admin/calendar/' + encodeURIComponent(editingCalendarId) + `?year=${encodeURIComponent(data.year)}`, {
       method: 'DELETE',
       body: '{}',
     });
@@ -1050,7 +1089,7 @@
     if (calendarColour && event.target !== calendarColour) calendarColour.blur();
   });
 
-  document.getElementById('add-shading-button')?.addEventListener('click', () => startShadeMode());
+  document.getElementById('add-shading-button')?.addEventListener('click', () => { if (yearIsEditable()) startShadeMode(); });
 
   document.querySelectorAll('[data-shade-edit]').forEach(button => {
     button.addEventListener('click', event => {

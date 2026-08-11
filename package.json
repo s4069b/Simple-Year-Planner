@@ -1,6 +1,6 @@
 {
   "name": "simple-year-planner",
-  "version": "1.0.0",
+  "version": "1.1.0-rc1",
   "private": true,
   "scripts": {
     "cf:dev": "wrangler dev",

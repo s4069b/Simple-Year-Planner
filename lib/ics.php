@@ -194,8 +194,8 @@ function yp_planner_intros(): array { return yp_read_json(yp_planner_intros_path
 function yp_planner_intro_for_year(int $year): array { foreach(yp_planner_intros() as $intro){if((int)($intro['year']??0)===$year)return ['year'=>$year,'text'=>(string)($intro['text']??''),'links'=>is_array($intro['links']??null)?$intro['links']:[],'logoUrl'=>(string)($intro['logoUrl']??'')];}return ['year'=>$year,'text'=>'','links'=>[],'logoUrl'=>'']; }
 
 function yp_events_for_year(int $year, bool $force=false): array {
-    $all=[];foreach(yp_calendars() as $calendar){if(empty($calendar['enabled'])||empty($calendar['url']))continue;$id=$calendar['id']??yp_slug($calendar['name']??'calendar');$cache=YP_CACHE_DIR.'/'.$id.'-'.$year.'.json';$events=null;
-        if(!$force&&is_file($cache)&&(time()-filemtime($cache)<YP_CACHE_SECONDS))$events=yp_read_json($cache,[]);
+    $all=[];foreach(yp_calendars($year) as $calendar){if(empty($calendar['enabled'])||empty($calendar['url']))continue;$id=$calendar['id']??yp_slug($calendar['name']??'calendar');$cache=YP_CACHE_DIR.'/'.$id.'-'.$year.'.json';$events=null;
+        if(!$force&&is_file($cache)&&($year<yp_current_year() || time()-filemtime($cache)<YP_CACHE_SECONDS))$events=yp_read_json($cache,[]);
         if($events===null){try{$events=yp_parse_ics_events(yp_fetch_ics($calendar['url']),$year);yp_write_json($cache,$events);yp_mark_calendar_synced($id);}catch(Throwable){$events=yp_read_json($cache,[]);}}
         foreach($events as &$event){$event['calendarId']=$id;$event['calendarName']=$calendar['name']??$id;$event['colour']=yp_calendar_colour($calendar['colour']??'#356a8a');$event['textColour']=yp_text_colour_for($event['colour']);}unset($event);$all=array_merge($all,$events);
     }usort($all,fn($a,$b)=>strcmp(($a['date']??'').($a['title']??''),($b['date']??'').($b['title']??'')));return $all;

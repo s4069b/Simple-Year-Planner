@@ -1015,3 +1015,37 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .event,.multi-day-segment{border-radius:5px}
 .small-screen-notice{border-radius:10px}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+
+/* Planner year lifecycle */
+.year-lifecycle-banner {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  flex-wrap: wrap;
+  margin: .55rem 0 0;
+  padding: .55rem .75rem;
+  border: 1px solid #d7dde3;
+  border-radius: .7rem;
+  background: rgba(248, 250, 252, .96);
+  color: #475569;
+  font-size: .8rem;
+}
+.year-lifecycle-banner[hidden] { display: none; }
+.year-lifecycle-banner strong { color: #334155; }
+.year-lifecycle-action,
+.reset-next-year-button {
+  min-height: 2rem;
+  padding: .35rem .65rem;
+  border: 1px solid #cbd5e1;
+  border-radius: .55rem;
+  background: #fff;
+  color: #334155;
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+.year-lifecycle-action:hover,
+.reset-next-year-button:hover { background: #f8fafc; border-color: #94a3b8; }
+.reset-next-year-button { color: #9f1239; border-color: #fecdd3; background: #fff7f8; }
+.toolbar-view-switch { gap: .4rem; }

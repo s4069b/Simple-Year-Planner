@@ -2,7 +2,7 @@
 
 ## Public planner
 
-Both hosting modes use the same browser assets (`assets/app.js` and `assets/style.css`) and the same event data shape. The planner supports the previous year, current year and next year.
+Both hosting modes use the same browser assets (`assets/app.js` and `assets/style.css`) and the same event data shape. The planner supports the previous year, current year and next year. Calendar-source configuration is stored as a separate snapshot for each planner year.
 
 ### Cloudflare
 
@@ -26,7 +26,7 @@ Both implementations handle public VEVENT data including:
 - descriptions, locations and URLs;
 - multi-day events.
 
-Calendar caches are per calendar and year and are rebuildable.
+Calendar caches are per calendar and year. Current/future caches are rebuildable; previous-year caches are intentionally treated as frozen snapshots and are not refreshed.
 
 ## Administration
 
@@ -34,11 +34,11 @@ Authentication is external to the application.
 
 ### Cloudflare
 
-Protect `/api/admin/*` with Cloudflare Access. Authorised editors use the inline Calendar Manager and Shading Manager and may switch to Public view without logging out.
+Protect `/api/admin/*` with Cloudflare Access. Authorised editors use the inline Calendar Manager and Shading Manager and may switch to Public view without logging out. Previous-year write APIs reject changes. A dedicated year-copy API creates/resets next year from the current year with explicit overwrite semantics.
 
 ### PHP
 
-Protect `/admin/` with Apache/nginx/host authentication. The PHP admin page is intentionally simpler and provides core calendar, basic shading and manual refresh controls.
+Protect `/admin/` with Apache/nginx/host authentication. The PHP admin page is intentionally simpler and provides core calendar, basic shading, manual refresh, and next-year create/reset controls. Server-side checks reject previous-year edits.
 
 ## Storage
 
@@ -48,7 +48,7 @@ Cloudflare persists configuration/cache JSON in R2. PHP hosting persists equival
 
 ## Scheduled calendar refresh
 
-Both deployment modes default to every three hours.
+Both deployment modes default to every three hours for the current year and an already-created next year. The previous year is excluded from scheduled refresh.
 
 Cloudflare uses the Cron Trigger in `wrangler.jsonc`:
 

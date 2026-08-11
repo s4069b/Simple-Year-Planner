@@ -459,8 +459,41 @@ async function fetchIcs(url: string): Promise<string> {
   return body;
 }
 
-async function calendars(env: Env): Promise<CalendarConfig[]> {
-  return readJson<CalendarConfig[]>(env, 'calendars.json', []);
+function calendarYearKey(year: number): string {
+  return `calendars-${year}.json`;
+}
+
+async function calendarYearExists(env: Env, year: number): Promise<boolean> {
+  return Boolean(await env.DATA.head(calendarYearKey(year)));
+}
+
+async function calendars(env: Env, year = currentYear()): Promise<CalendarConfig[]> {
+  const key = calendarYearKey(year);
+  const stored = await env.DATA.get(key);
+  if (stored) {
+    try { return JSON.parse(await stored.text()) as CalendarConfig[]; } catch {}
+  }
+
+  // Migration from releases where calendars were global. Freeze a snapshot for
+  // the current and previous year. Deliberately do not auto-create next year.
+  if (year <= currentYear()) {
+    const legacy = await readJson<CalendarConfig[]>(env, 'calendars.json', []);
+    await writeJson(env, key, legacy);
+    return legacy;
+  }
+  return [];
+}
+
+async function plannerYearPresent(env: Env, year: number): Promise<boolean> {
+  if (year <= currentYear()) return true;
+  if (await calendarYearExists(env, year)) return true;
+  if ((await shading(env)).some(item => item.year === year)) return true;
+  return Boolean((await plannerIntros(env)).find(item => item.year === year));
+}
+
+function assertEditableYear(year: number): void {
+  if (!allowedYears().includes(year)) throw new Error('Invalid year.');
+  if (year < currentYear()) throw new Error(`${year} is frozen and cannot be edited.`);
 }
 
 async function shading(env: Env): Promise<ShadeConfig[]> {
@@ -489,14 +522,14 @@ function shadeRanges(shade: ShadeConfig): ShadeRange[] {
 
 async function eventsForYear(env: Env, year: number, force = false): Promise<PlannerEvent[]> {
   const all: PlannerEvent[] = [];
-  for (const calendar of await calendars(env)) {
+  for (const calendar of await calendars(env, year)) {
     if (!calendar.enabled || !calendar.url) continue;
     const key = `cache/${calendar.id}-${year}.json`;
     let events: PlannerEvent[] | null = null;
     if (!force) {
       const cached = await env.DATA.get(key);
       const uploaded = cached?.uploaded?.getTime() || 0;
-      if (cached && Date.now() - uploaded < CACHE_SECONDS * 1000) {
+      if (cached && (year < currentYear() || Date.now() - uploaded < CACHE_SECONDS * 1000)) {
         try { events = JSON.parse(await cached.text()) as PlannerEvent[]; } catch {}
       }
     }
@@ -534,8 +567,11 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
   if (!year) return html('Only the current year and next year are available.', 404);
 
   const years = allowedYears();
+  const activeYear = currentYear();
+  const yearPresent = await plannerYearPresent(env, year);
+  const yearFrozen = year < activeYear;
   const cals = await Promise.all(
-    (await calendars(env))
+    (await calendars(env, year))
       .filter(c => c.enabled)
       .map(async c => ({ ...c, lastSynced: await calendarLastSynced(env, c.id) }))
   );
@@ -558,6 +594,11 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
   <a class="year-arrow ${year===years[years.length-1]?'disabled':''}" href="${year===years[years.length-1]?'#':`?year=${year+1}`}" aria-label="Next year">→</a>
   <button id="today-button" class="today-button" type="button">Today</button>
 </nav></header>
+
+<div id="year-lifecycle-banner" class="year-lifecycle-banner" ${yearFrozen || yearPresent ? 'hidden' : ''}>
+  ${yearFrozen ? `<strong>${year} is frozen.</strong><span class="admin-access-only" hidden> Previous-year planners are read-only and cannot be edited.</span>` : ''}
+  ${!yearPresent ? `<strong>${year} has not been prepared yet.</strong><span class="admin-access-only" hidden> Create it by copying ${activeYear} calendar and shading settings.</span><button id="create-next-year-button" class="admin-access-only year-lifecycle-action" type="button" hidden>Copy ${activeYear} into ${year}</button>` : ''}
+</div>
 
 <section id="planner-intro" class="planner-intro ${intro.text || intro.logoUrl || intro.links.length ? '' : 'planner-intro--empty'}">
   <div class="planner-intro-content">
@@ -615,6 +656,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
 
 <div class="toolbar-view-switch" aria-label="View mode">
   <button id="visitor-view-toggle" class="visitor-view-toggle" type="button" aria-pressed="false">Public</button>
+  <button id="reset-next-year-button" class="reset-next-year-button admin-only" type="button" hidden>Reset</button>
 </div>
 
 <div class="toolbar-right">
@@ -630,7 +672,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
   <p>Use <strong>Shading Toggle</strong> to show or hide planning overlays.</p>
   <p>For authorised editors, these controls become <strong>Calendar Manager</strong> and <strong>Shading Manager</strong>.</p>
   <p>The calendar and shading legends stay visible while you scroll.</p>
-  <p>The previous year, current year and next year are available.</p>
+  <p>The previous year is retained as a frozen read-only snapshot. The current year is editable by authorised administrators. The next year can be created from the current year when needed.</p>
   <p>Calendars are refreshed automatically on the schedule configured for the host. This repository defaults to every 3 hours. Administrators can also use <strong>Sync</strong> beside a calendar for an immediate refresh.</p>
   <p>If you have administrator access, editing controls appear automatically.</p>
   <p><strong>Administrators:</strong> <a href="/admin">Log in to edit the planner</a>.</p>
@@ -792,12 +834,21 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
   </section>
 </div>
 
-<script>window.YEAR_PLANNER_DATA=${JSON.stringify({year, events, shading: shades, calendars: cals, intro}).replace(/</g,'\\u003c')};</script>
+<script>window.YEAR_PLANNER_DATA=${JSON.stringify({year, currentYear: activeYear, yearPresent, yearFrozen, events, shading: shades, calendars: cals, intro}).replace(/</g,'\\u003c')};</script>
 <script src="/app.js"></script></body></html>`);
 }
 
-async function apiConfig(env: Env): Promise<Response> {
-  return json({ ok: true, calendars: await calendars(env), shading: await shading(env), years: allowedYears() });
+async function apiConfig(env: Env, year = currentYear()): Promise<Response> {
+  return json({
+    ok: true,
+    calendars: await calendars(env, year),
+    shading: (await shading(env)).filter(item => item.year === year),
+    years: allowedYears(),
+    currentYear: currentYear(),
+    year,
+    yearPresent: await plannerYearPresent(env, year),
+    yearFrozen: year < currentYear(),
+  });
 }
 
 async function parseBody(request: Request): Promise<any> {
@@ -811,11 +862,17 @@ async function handleAdminApi(request: Request, env: Env, path: string): Promise
     return Response.redirect(new URL('/', request.url).toString(), 302);
   }
 
-  if (request.method === 'GET' && path === '/api/admin/config') return apiConfig(env);
+  if (request.method === 'GET' && path === '/api/admin/config') {
+    const year = validYear(new URL(request.url).searchParams.get('year')) || currentYear();
+    return apiConfig(env, year);
+  }
 
   if (request.method === 'POST' && path === '/api/admin/calendar') {
     const body = await parseBody(request);
-    const items = await calendars(env);
+    const year = Number(body.year || currentYear());
+    assertEditableYear(year);
+    if (year > currentYear() && !(await plannerYearPresent(env, year))) return json({ok:false,error:'Create the next-year planner before editing it.'},409);
+    const items = await calendars(env, year);
     const id = String(body.id || `${slug(body.name || 'calendar')}-${crypto.randomUUID().slice(0,6)}`);
     const row: CalendarConfig = {
       id,
@@ -827,21 +884,25 @@ async function handleAdminApi(request: Request, env: Env, path: string): Promise
     if (!/^https?:\/\//i.test(row.url)) return json({ok:false,error:'Enter a public HTTP(S) ICS URL.'},400);
     const index = items.findIndex(c => c.id === id);
     if (index >= 0) items[index] = row; else items.push(row);
-    await writeJson(env, 'calendars.json', items);
+    await writeJson(env, calendarYearKey(year), items);
     return json({ok:true});
   }
 
   if (request.method === 'DELETE' && path.startsWith('/api/admin/calendar/')) {
+    const url = new URL(request.url);
+    const year = Number(url.searchParams.get('year') || currentYear());
+    assertEditableYear(year);
     const id = decodeURIComponent(path.split('/').pop() || '');
-    await writeJson(env, 'calendars.json', (await calendars(env)).filter(c => c.id !== id));
-    for (const year of allowedYears()) await env.DATA.delete(`cache/${id}-${year}.json`);
+    await writeJson(env, calendarYearKey(year), (await calendars(env, year)).filter(c => c.id !== id));
+    await env.DATA.delete(`cache/${id}-${year}.json`);
     return json({ok:true});
   }
 
   if (request.method === 'POST' && path === '/api/admin/planner-intro') {
     const body = await parseBody(request);
     const year = Number(body.year);
-    if (!allowedYears().includes(year)) return json({ok:false,error:'Invalid year.'},400);
+    try { assertEditableYear(year); } catch (error) { return json({ok:false,error:error instanceof Error ? error.message : 'Invalid year.'},400); }
+    if (year > currentYear() && !(await plannerYearPresent(env, year))) return json({ok:false,error:'Create the next-year planner before editing it.'},409);
 
     const links = Array.isArray(body.links)
       ? body.links
@@ -886,7 +947,8 @@ async function handleAdminApi(request: Request, env: Env, path: string): Promise
   if (request.method === 'POST' && path === '/api/admin/shading') {
     const body = await parseBody(request);
     const year = Number(body.year);
-    if (!allowedYears().includes(year)) return json({ok:false,error:'Invalid year.'},400);
+    try { assertEditableYear(year); } catch (error) { return json({ok:false,error:error instanceof Error ? error.message : 'Invalid year.'},400); }
+    if (year > currentYear() && !(await plannerYearPresent(env, year))) return json({ok:false,error:'Create the next-year planner before editing it.'},409);
     const incomingRanges = Array.isArray(body.ranges)
       ? body.ranges
           .map((range: any) => ({
@@ -923,34 +985,76 @@ async function handleAdminApi(request: Request, env: Env, path: string): Promise
 
   if (request.method === 'DELETE' && path.startsWith('/api/admin/shading/')) {
     const id = decodeURIComponent(path.split('/').pop() || '');
-    await writeJson(env, 'shading.json', (await shading(env)).filter(s => s.id !== id));
+    const items = await shading(env);
+    const item = items.find(s => s.id === id);
+    if (item) assertEditableYear(item.year);
+    await writeJson(env, 'shading.json', items.filter(s => s.id !== id));
     return json({ok:true});
   }
 
   if (request.method === 'POST' && path.startsWith('/api/admin/sync/')) {
+    const url = new URL(request.url);
+    const year = Number(url.searchParams.get('year') || currentYear());
+    assertEditableYear(year);
     const id = decodeURIComponent(path.split('/').pop() || '');
-    const calendar = (await calendars(env)).find(item => item.id === id);
+    const calendar = (await calendars(env, year)).find(item => item.id === id);
     if (!calendar) return json({ok:false,error:'Calendar not found.'},404);
 
-    for (const year of allowedYears()) {
-      const key = `cache/${calendar.id}-${year}.json`;
-      try {
-        const events = parseIcs(await fetchIcs(calendar.url), year);
-        await writeJson(env, key, events);
-      } catch (error) {
-        return json({
-          ok:false,
-          error:error instanceof Error ? error.message : 'Calendar sync failed.',
-        }, 400);
-      }
+    const key = `cache/${calendar.id}-${year}.json`;
+    try {
+      const events = parseIcs(await fetchIcs(calendar.url), year);
+      await writeJson(env, key, events);
+    } catch (error) {
+      return json({
+        ok:false,
+        error:error instanceof Error ? error.message : 'Calendar sync failed.',
+      }, 400);
     }
 
     await markCalendarSynced(env, calendar.id);
     return json({ok:true});
   }
 
+  if (request.method === 'POST' && path === '/api/admin/year/copy') {
+    const body = await parseBody(request);
+    const source = Number(body.source);
+    const target = Number(body.target);
+    const overwrite = body.overwrite === true;
+    const active = currentYear();
+    if (source !== active || target !== active + 1) return json({ok:false,error:'Only the current year can be copied into next year.'},400);
+    const exists = await plannerYearPresent(env, target);
+    if (exists && !overwrite) return json({ok:false,error:`${target} already exists. Use Reset if you want to replace it.`},409);
+
+    const sourceCalendars = await calendars(env, source);
+    const targetCalendars = sourceCalendars.map(calendar => ({ ...calendar }));
+    await writeJson(env, calendarYearKey(target), targetCalendars);
+
+    const shadeItems = await shading(env);
+    const keep = shadeItems.filter(item => item.year !== target);
+    const copied = shadeItems
+      .filter(item => item.year === source)
+      .map(item => ({
+        ...item,
+        id: `shade-${crypto.randomUUID().slice(0,8)}`,
+        year: target,
+        ranges: shadeRanges(item).map(range => ({
+          start: range.start.replace(/^\d{4}/, String(target)),
+          end: range.end.replace(/^\d{4}/, String(target)),
+        })),
+        start: undefined,
+        end: undefined,
+      }));
+    await writeJson(env, 'shading.json', [...keep, ...copied]);
+
+    // The planner introduction is intentionally not copied; each year can explain
+    // its own purpose. Generate fresh event caches from the copied calendar sources.
+    for (const calendar of targetCalendars) await env.DATA.delete(`cache/${calendar.id}-${target}.json`);
+    await eventsForYear(env, target, true);
+    return json({ok:true, year:target});
+  }
+
   if (request.method === 'POST' && path === '/api/admin/sync') {
-    for (const year of allowedYears()) await eventsForYear(env, year, true);
+    for (const year of [currentYear(), currentYear() + 1]) { if (await plannerYearPresent(env, year)) await eventsForYear(env, year, true); }
     return json({ok:true});
   }
 
@@ -974,8 +1078,8 @@ export default {
   },
 
   async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
-    for (const year of allowedYears()) {
-      await eventsForYear(env, year, true);
+    for (const year of [currentYear(), currentYear() + 1]) {
+      if (await plannerYearPresent(env, year)) await eventsForYear(env, year, true);
     }
   },
 } satisfies ExportedHandler<Env>;

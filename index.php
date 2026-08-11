@@ -4,7 +4,10 @@ require_once __DIR__ . '/lib/ics.php';
 
 $year=yp_validate_year($_GET['year'] ?? null);
 $years=yp_allowed_years();
-$calendars=array_values(array_filter(yp_calendars(), fn($c)=>!empty($c['enabled'])));
+$currentYear=yp_current_year();
+$yearPresent=yp_planner_year_present($year);
+$yearFrozen=$year<$currentYear;
+$calendars=array_values(array_filter(yp_calendars($year), fn($c)=>!empty($c['enabled'])));
 foreach ($calendars as &$calendar) $calendar['lastSynced']=yp_calendar_last_synced((string)($calendar['id'] ?? ''));
 unset($calendar);
 $events=yp_events_for_year($year);
@@ -28,6 +31,8 @@ $shading=array_map(function($s){$s['ranges']=shade_ranges_php($s);return $s;},$s
   <a class="year-arrow <?=$year===$years[count($years)-1]?'disabled':''?>" href="<?=$year===$years[count($years)-1]?'#':'?year='.($year+1)?>" aria-label="Next year">→</a>
   <button id="today-button" class="today-button" type="button">Today</button>
 </nav></header>
+
+<?php if(!$yearPresent):?><div id="year-lifecycle-banner" class="year-lifecycle-banner"><strong><?=h($year)?> has not been prepared yet.</strong> <a href="admin/?year=<?=h($year)?>">Administrators can prepare it here.</a></div><?php endif;?>
 
 <section id="planner-intro" class="planner-intro <?=(!empty($intro['text'])||!empty($intro['logoUrl'])||!empty($intro['links']))?'':'planner-intro--empty'?>">
   <div class="planner-intro-content">
@@ -68,5 +73,5 @@ $shading=array_map(function($s){$s['ranges']=shade_ranges_php($s);return $s;},$s
 <div class="small-screen-notice">This planner works on a small screen, but a larger screen gives a much better whole-year view.</div>
 </div>
 <main id="planner" class="planner"></main>
-<script>window.YEAR_PLANNER_DATA = <?=json_encode(['year'=>$year,'events'=>$events,'shading'=>$shading,'calendars'=>$calendars,'intro'=>$intro], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)?>;</script>
+<script>window.YEAR_PLANNER_DATA = <?=json_encode(['year'=>$year,'currentYear'=>$currentYear,'yearPresent'=>$yearPresent,'yearFrozen'=>$yearFrozen,'events'=>$events,'shading'=>$shading,'calendars'=>$calendars,'intro'=>$intro], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE)?>;</script>
 <script src="assets/app.js"></script></body></html>

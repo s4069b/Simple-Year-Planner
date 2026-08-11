@@ -10,7 +10,8 @@ if (PHP_SAPI !== 'cli') {
 
 $ok = true;
 
-foreach (yp_allowed_years() as $year) {
+foreach ([yp_current_year(), yp_current_year()+1] as $year) {
+    if (!yp_planner_year_present($year)) continue;
     try {
         yp_events_for_year($year, true);
         fwrite(STDOUT, "Synced calendars for {$year}\n");

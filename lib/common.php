@@ -46,8 +46,72 @@ function yp_slug(string $value): string {
     return trim($value, '-') ?: 'calendar';
 }
 
-function yp_calendars(): array {
-    return yp_read_json(YP_DATA_DIR . '/calendars.json', []);
+function yp_calendar_year_path(int $year): string {
+    return YP_DATA_DIR . '/calendars-' . $year . '.json';
+}
+
+function yp_calendar_year_exists(int $year): bool {
+    return is_file(yp_calendar_year_path($year));
+}
+
+function yp_calendars(?int $year = null): array {
+    $year ??= yp_current_year();
+    $path = yp_calendar_year_path($year);
+    if (is_file($path)) return yp_read_json($path, []);
+
+    // Migrate the old global calendar configuration into frozen snapshots for
+    // current/past years. Deliberately leave next year absent until copied.
+    if ($year <= yp_current_year()) {
+        $legacy = yp_read_json(YP_DATA_DIR . '/calendars.json', []);
+        yp_write_json($path, $legacy);
+        return $legacy;
+    }
+    return [];
+}
+
+function yp_planner_year_present(int $year): bool {
+    if ($year <= yp_current_year()) return true;
+    if (yp_calendar_year_exists($year)) return true;
+    foreach (yp_shading() as $shade) if ((int)($shade['year'] ?? 0) === $year) return true;
+    foreach (yp_planner_intros() as $intro) if ((int)($intro['year'] ?? 0) === $year) return true;
+    return false;
+}
+
+function yp_assert_editable_year(int $year): void {
+    if (!in_array($year, yp_allowed_years(), true)) throw new RuntimeException('Invalid year.');
+    if ($year < yp_current_year()) throw new RuntimeException($year . ' is frozen and cannot be edited.');
+}
+
+function yp_copy_current_to_next(bool $overwrite): void {
+    $source = yp_current_year();
+    $target = $source + 1;
+    if (yp_planner_year_present($target) && !$overwrite) throw new RuntimeException($target . ' already exists. Use Reset to replace it.');
+
+    yp_write_json(yp_calendar_year_path($target), array_map(fn($c) => $c, yp_calendars($source)));
+    $all = yp_shading();
+    $keep = array_values(array_filter($all, fn($s) => (int)($s['year'] ?? 0) !== $target));
+    $copy = [];
+    foreach ($all as $shade) {
+        if ((int)($shade['year'] ?? 0) !== $source) continue;
+        $ranges = !empty($shade['ranges']) && is_array($shade['ranges'])
+            ? $shade['ranges']
+            : ((!empty($shade['start']) && !empty($shade['end'])) ? [['start'=>$shade['start'],'end'=>$shade['end']]] : []);
+        $newRanges = [];
+        foreach ($ranges as $range) {
+            $newRanges[] = [
+                'start' => preg_replace('/^\d{4}/', (string)$target, (string)($range['start'] ?? '')),
+                'end' => preg_replace('/^\d{4}/', (string)$target, (string)($range['end'] ?? '')),
+            ];
+        }
+        $copy[] = [
+            'id' => 'shade-' . substr(bin2hex(random_bytes(4)), 0, 8),
+            'name' => (string)($shade['name'] ?? 'Shading'),
+            'year' => $target,
+            'ranges' => $newRanges,
+            'colour' => yp_calendar_colour((string)($shade['colour'] ?? '#e5e7eb')),
+        ];
+    }
+    yp_write_json(YP_DATA_DIR . '/shading.json', array_merge($keep, $copy));
 }
 
 function yp_shading(): array {
