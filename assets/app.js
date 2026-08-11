@@ -337,6 +337,20 @@
     if (confirmGroup) confirmGroup.hidden = true;
   }
 
+  function focusShadeBeginning() {
+    if (!shadeRanges.length) return;
+
+    const firstDate = shadeRanges[0].start;
+    const cell = document.querySelector(`.day[data-date="${firstDate}"]`);
+    if (!cell) return;
+
+    cell.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+      inline: 'nearest',
+    });
+  }
+
   function startShadeMode(shade = null) {
     shadeMode = true;
     draggingShade = false;
@@ -366,6 +380,10 @@
 
     paintShadeSelection();
     showShadeEditor();
+
+    if (shade && shadeRanges.length) {
+      window.setTimeout(focusShadeBeginning, 0);
+    }
   }
 
   function stopShadeMode() {
