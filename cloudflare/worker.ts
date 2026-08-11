@@ -187,6 +187,18 @@ function parseIcsDate(value: string, params: Record<string, string>): Date {
   return new Date(value);
 }
 
+function parseIcsDuration(value: string): number | null {
+  const match = value.trim().toUpperCase().match(/^([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/);
+  if (!match) return null;
+  const sign = match[1] === '-' ? -1 : 1;
+  const weeks = Number(match[2] || 0);
+  const days = Number(match[3] || 0);
+  const hours = Number(match[4] || 0);
+  const minutes = Number(match[5] || 0);
+  const seconds = Number(match[6] || 0);
+  return sign * (((weeks * 7 + days) * 24 * 60 * 60 + hours * 60 * 60 + minutes * 60 + seconds) * 1000);
+}
+
 function wallDateFor(date: Date, timeZone: string): Date {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
@@ -341,7 +353,7 @@ function occurrence(event: any, start: Date, end: Date, year: number): PlannerEv
 
 function expandEvent(event: any, year: number): PlannerEvent[] {
   const start: Date = event.start;
-  const end: Date = event.end || event.start;
+  const end: Date = event.end || (Number.isFinite(event.durationMs) ? new Date(start.getTime() + event.durationMs) : event.start);
   const duration = end.getTime() - start.getTime();
   const timeZone = normaliseTzid(event.tzid);
   const exclusions = new Set<number>((event.exdates || []).map((date: Date) => date.getTime()));
@@ -414,6 +426,7 @@ function parseIcs(ics: string, year: number): PlannerEvent[] {
       current.allDay = params.VALUE === 'DATE' || /^\d{8}$/.test(value);
     }
     else if (name === 'DTEND') current.end = parseIcsDate(value, params);
+    else if (name === 'DURATION') current.durationMs = parseIcsDuration(value);
   }
 
   let events = sourceEvents
@@ -427,7 +440,8 @@ function parseIcs(ics: string, year: number): PlannerEvent[] {
     const recurrenceTime = override.recurrenceId.getTime();
     events = events.filter(event => !(event.uid === override.uid && Math.abs(new Date(event.start).getTime() - recurrenceTime) < 1000));
     if (override.status !== 'CANCELLED' && override.start) {
-      events.push(...occurrence(override, override.start, override.end || override.start, year));
+      const overrideEnd = override.end || (Number.isFinite(override.durationMs) ? new Date(override.start.getTime() + override.durationMs) : override.start);
+      events.push(...occurrence(override, override.start, overrideEnd, year));
     }
   }
 

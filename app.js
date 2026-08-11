@@ -127,7 +127,26 @@
         number.textContent = String(day);
         cell.append(number);
 
-        for (const event of data.events.filter(e => e.date === date)) {
+        const eventsForCell = [];
+        const seenEvents = new Set();
+        for (const event of data.events) {
+          const key = `${event.calendarId || ''}|${event.uid || ''}|${event.start || ''}|${event.end || ''}`;
+          if (seenEvents.has(key)) continue;
+
+          let coversDate = event.date === date;
+          if (event.start && event.end) {
+            const startDay = iso(new Date(event.start));
+            const occupiedEnd = new Date(new Date(event.end).getTime() - 1);
+            const endDay = iso(occupiedEnd);
+            coversDate = date >= startDay && date <= endDay;
+          }
+
+          if (!coversDate) continue;
+          seenEvents.add(key);
+          eventsForCell.push(event);
+        }
+
+        for (const event of eventsForCell) {
           const item = document.createElement('button');
           item.type = 'button';
           item.className = 'event';
