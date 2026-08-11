@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "publicyearplanner",
+  "main": "cloudflare/worker.ts",
+  "compatibility_date": "2026-08-10",
+  "assets": {
+    "directory": "./assets",
+    "binding": "ASSETS"
+  },
+  "r2_buckets": [
+    {
+      "binding": "DATA",
+      "bucket_name": "simple-year-planner-data"
+    }
+  ],
+  "triggers": {
+    "crons": ["0 */3 * * *"]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "simple-year-planner",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "cf:dev": "wrangler dev",
+    "cf:deploy": "wrangler deploy",
+    "cf:types": "wrangler types",
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "typescript": "^5.9.2",
+    "wrangler": "^4.120.0"
+  }
+}
