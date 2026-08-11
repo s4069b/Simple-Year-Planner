@@ -681,6 +681,14 @@
       void visitorToggle.offsetWidth;
     }
 
+    const previousYearLink = document.getElementById('previous-year-link');
+    if (previousYearLink && adminMode && data.year === currentPlannerYear && data.showPreviousYear === false) {
+      const hiddenYear = currentPlannerYear - 1;
+      previousYearLink.classList.remove('disabled');
+      previousYearLink.href = `/api/admin/view-year?year=${encodeURIComponent(hiddenYear)}`;
+      previousYearLink.setAttribute('aria-label', `Previous year (${hiddenYear}, hidden publicly)`);
+    }
+
     const previousVisibilityButton = document.getElementById('previous-year-visibility-button');
     if (previousVisibilityButton) {
       previousVisibilityButton.hidden = !(editing && data.year === currentPlannerYear);
@@ -728,8 +736,8 @@
       method: 'POST',
       body: JSON.stringify({ showPreviousYear: nextValue }),
     });
-    if (fromFrozenYear && !nextValue) {
-      window.location.href = `/?year=${currentPlannerYear}`;
+    if (fromFrozenYear) {
+      window.location.href = nextValue ? `/?year=${previousYear}` : `/?year=${currentPlannerYear}`;
       return;
     }
     window.location.reload();

@@ -574,7 +574,7 @@ function esc(value: unknown): string {
   return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]!));
 }
 
-async function publicPage(request: Request, env: Env): Promise<Response> {
+async function publicPage(request: Request, env: Env, allowHiddenPrevious = false): Promise<Response> {
   const url = new URL(request.url);
   const year = validYear(url.searchParams.get('year'));
   if (!year) return html('Only the current year and next year are available.', 404);
@@ -582,7 +582,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
   const years = allowedYears();
   const activeYear = currentYear();
   const settings = await plannerSettings(env);
-  if (year < activeYear && !settings.showPreviousYear) return html('The previous year planner is hidden.', 404);
+  if (year < activeYear && !settings.showPreviousYear && !allowHiddenPrevious) return html('The previous year planner is hidden.', 404);
   const yearPresent = await plannerYearPresent(env, year);
   const yearFrozen = year < activeYear;
   const cals = await Promise.all(
@@ -604,9 +604,9 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
 <div class="sticky-shell">
 <header class="site-header"><div><h1>Year Planner ${year}</h1></div>
 <nav class="year-nav">
-  <a class="year-arrow ${(year===years[0] || (year===activeYear && !settings.showPreviousYear))?'disabled':''}" href="${(year===years[0] || (year===activeYear && !settings.showPreviousYear))?'#':`?year=${year-1}`}" aria-label="Previous year">←</a>
+  <a id="previous-year-link" class="year-arrow ${(year===years[0] || (year===activeYear && !settings.showPreviousYear))?'disabled':''}" href="${(year===years[0] || (year===activeYear && !settings.showPreviousYear))?'#':`/?year=${year-1}`}" aria-label="Previous year">←</a>
   <span class="year-current">${year}</span>
-  <a class="year-arrow ${year===years[years.length-1]?'disabled':''}" href="${year===years[years.length-1]?'#':`?year=${year+1}`}" aria-label="Next year">→</a>
+  <a class="year-arrow ${year===years[years.length-1]?'disabled':''}" href="${year===years[years.length-1]?'#':`/?year=${year+1}`}" aria-label="Next year">→</a>
   <button id="today-button" class="today-button" type="button">Today</button>
 </nav></header>
 
@@ -899,6 +899,12 @@ async function parseBody(request: Request): Promise<any> {
 async function handleAdminApi(request: Request, env: Env, path: string): Promise<Response> {
   if (request.method === 'GET' && path === '/api/admin/login') {
     return Response.redirect(new URL('/', request.url).toString(), 302);
+  }
+
+  if (request.method === 'GET' && path === '/api/admin/view-year') {
+    const year = validYear(new URL(request.url).searchParams.get('year'));
+    if (!year) return html('Invalid planner year.', 404);
+    return publicPage(request, env, true);
   }
 
   if (request.method === 'GET' && path === '/api/admin/config') {
