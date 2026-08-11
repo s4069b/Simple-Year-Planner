@@ -271,29 +271,48 @@ function occurrence(event: any, start: Date, end: Date, year: number): PlannerEv
 function expandEvent(event: any, year: number): PlannerEvent[] {
   const start: Date = event.start;
   const end: Date = event.end || event.start;
-  if (!event.rrule) return occurrence(event, start, end, year);
-
-  const rule = parseRRule(event.rrule);
-  const count = rule.COUNT ? Math.max(1, Number(rule.COUNT)) : Number.POSITIVE_INFINITY;
-  const until = rule.UNTIL ? parseIcsDate(rule.UNTIL, {}) : null;
   const duration = end.getTime() - start.getTime();
+  const exclusions = new Set<number>((event.exdates || []).map((date: Date) => date.getTime()));
   const results: PlannerEvent[] = [];
-  const targetEnd = new Date(year, 11, 31, 23, 59, 59);
-  let current = new Date(start);
-  let generated = 0;
-  let safety = 30000;
 
-  while (current <= targetEnd && generated < count && safety-- > 0) {
-    if (until && current > until) break;
-    if (matchesRRuleDate(current, start, rule)) {
-      generated++;
-      results.push(...occurrence(event, current, new Date(current.getTime() + duration), year));
+  const add = (current: Date): void => {
+    if (exclusions.has(current.getTime())) return;
+    results.push(...occurrence(event, current, new Date(current.getTime() + duration), year));
+  };
+
+  if (event.rrule) {
+    const rule = parseRRule(event.rrule);
+    const count = rule.COUNT ? Math.max(1, Number(rule.COUNT)) : Number.POSITIVE_INFINITY;
+    const until = rule.UNTIL ? parseIcsDate(rule.UNTIL, {}) : null;
+    const targetEnd = new Date(year, 11, 31, 23, 59, 59);
+    let current = new Date(start);
+    let generated = 0;
+    let safety = 30000;
+
+    while (current <= targetEnd && generated < count && safety-- > 0) {
+      if (until && current > until) break;
+      if (matchesRRuleDate(current, start, rule)) {
+        generated++;
+        add(current);
+      }
+      current = new Date(current);
+      current.setDate(current.getDate() + 1);
     }
-    current = new Date(current);
-    current.setDate(current.getDate() + 1);
+  } else {
+    add(start);
   }
 
-  return results;
+  // Some calendar systems express a series with RDATE values rather than,
+  // or in addition to, RRULE. Previously these extra occurrences were ignored.
+  for (const rdate of (event.rdates || []) as Date[]) add(rdate);
+
+  const seen = new Set<string>();
+  return results.filter(item => {
+    const key = `${item.start}|${item.title}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function parseIcs(ics: string, year: number): PlannerEvent[] {
@@ -314,6 +333,9 @@ function parseIcs(ics: string, year: number): PlannerEvent[] {
     else if (name === 'DESCRIPTION') current.description = unescapeIcs(value);
     else if (name === 'LOCATION') current.location = unescapeIcs(value);
     else if (name === 'RRULE') current.rrule = value;
+    else if (name === 'RDATE') current.rdates = [...(current.rdates || []), ...value.split(',').filter(Boolean).map(item => parseIcsDate(item, params))];
+    else if (name === 'EXDATE') current.exdates = [...(current.exdates || []), ...value.split(',').filter(Boolean).map(item => parseIcsDate(item, params))];
+    else if (name === 'RECURRENCE-ID') current.recurrenceId = parseIcsDate(value, params);
     else if (name === 'DTSTART') { current.start = parseIcsDate(value, params); current.allDay = params.VALUE === 'DATE' || /^\d{8}$/.test(value); }
     else if (name === 'DTEND') current.end = parseIcsDate(value, params);
   }
