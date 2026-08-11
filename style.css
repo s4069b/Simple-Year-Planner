@@ -768,7 +768,9 @@ body:not(.is-admin) .planner-intro--empty{
   width:100%;
   border:0;
   text-align:left;
-  font:inherit;
+  font-family:inherit;
+  font-size:.7rem;
+  line-height:1.2;
   cursor:pointer;
 }
 .event:hover,.event:focus-visible{filter:brightness(.96);text-decoration:underline}
