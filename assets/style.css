@@ -182,69 +182,6 @@ body.shade-select-mode .day[data-date]{cursor:crosshair}
   }
 }
 
-.shading-legend{
-  position:sticky;
-  top:63px;
-  z-index:9;
-  display:flex;
-  align-items:center;
-  gap:12px;
-  min-height:38px;
-  padding:7px 22px;
-  background:rgba(255,255,255,.96);
-  border-bottom:1px solid #e2e6eb;
-  backdrop-filter:blur(6px);
-}
-.shading-legend-title{
-  flex:0 0 auto;
-  font-size:.78rem;
-  font-weight:700;
-  color:#59656f;
-}
-.shading-legend-items{
-  display:flex;
-  align-items:center;
-  gap:10px 16px;
-  flex-wrap:wrap;
-  min-width:0;
-}
-.shading-legend-item{
-  display:flex;
-  align-items:center;
-  gap:6px;
-  font-size:.78rem;
-  color:#35414a;
-  white-space:nowrap;
-}
-.shading-legend-swatch{
-  display:inline-block;
-  width:22px;
-  height:12px;
-  border:1px solid #0001;
-  border-radius:3px;
-  flex:0 0 auto;
-}
-.shading-legend-empty{
-  font-size:.78rem;
-  color:#87919a;
-  font-style:italic;
-}
-.shading-legend--empty{
-  opacity:.85;
-}
-@media(max-width:700px){
-  .shading-legend{
-    position:sticky;
-    top:0;
-    padding:6px 8px;
-    gap:8px;
-  }
-  .shading-legend-items{
-    gap:6px 10px;
-  }
-}
-
-
 /* --- Sticky header + toolbar stack --- */
 .site-header{
   position:sticky;
@@ -322,14 +259,6 @@ body.shade-select-mode .day[data-date]{cursor:crosshair}
   border:0!important;
   backdrop-filter:none!important;
   flex:0 1 auto;
-}
-.shading-legend-title,
-.shading-legend-items,
-.shading-legend-empty{
-  all:unset;
-}
-.shading-legend-items{
-  display:contents;
 }
 
 /* Admin item actions in Calendars/Shading pop-outs. */

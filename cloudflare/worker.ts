@@ -138,17 +138,69 @@ function parseProp(line: string): { name: string; params: Record<string, string>
   return { name, params, value: line.slice(colon + 1) };
 }
 
+const WINDOWS_TZIDS: Record<string, string> = {
+  'E. Australia Standard Time': 'Australia/Brisbane',
+  'AUS Eastern Standard Time': 'Australia/Sydney',
+  'Tasmania Standard Time': 'Australia/Hobart',
+  'Cen. Australia Standard Time': 'Australia/Adelaide',
+  'W. Australia Standard Time': 'Australia/Perth',
+};
+
+function normaliseTzid(value: string | undefined): string {
+  if (!value) return TZ;
+  return WINDOWS_TZIDS[value] || value;
+}
+
+function zonedLocalToUtc(
+  year: number, month: number, day: number, hour: number, minute: number, second: number,
+  timeZone: string,
+): Date {
+  // Intl gives us the calendar-local fields for a UTC guess. Iterating the
+  // difference converts an ICS TZID wall-clock time to the correct instant,
+  // including daylight-saving offsets where the source zone uses them.
+  const target = Date.UTC(year, month - 1, day, hour, minute, second);
+  let guess = target;
+  for (let i = 0; i < 3; i++) {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date(guess));
+    const map = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    const shown = Date.UTC(Number(map.year), Number(map.month) - 1, Number(map.day), Number(map.hour), Number(map.minute), Number(map.second));
+    const delta = target - shown;
+    if (!delta) break;
+    guess += delta;
+  }
+  return new Date(guess);
+}
+
 function parseIcsDate(value: string, params: Record<string, string>): Date {
   if (params.VALUE === 'DATE' || /^\d{8}$/.test(value)) {
-    return new Date(`${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}T00:00:00`);
+    return zonedLocalToUtc(Number(value.slice(0,4)), Number(value.slice(4,6)), Number(value.slice(6,8)), 0, 0, 0, normaliseTzid(params.TZID));
   }
-  if (/^\d{8}T\d{6}Z$/.test(value)) {
-    return new Date(`${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}T${value.slice(9, 11)}:${value.slice(11, 13)}:${value.slice(13, 15)}Z`);
-  }
-  if (/^\d{8}T\d{6}$/.test(value)) {
-    return new Date(`${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}T${value.slice(9, 11)}:${value.slice(11, 13)}:${value.slice(13, 15)}`);
+  const match = value.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/);
+  if (match) {
+    const [, y, m, d, hh, mm, ss, z] = match;
+    if (z === 'Z') return new Date(Date.UTC(Number(y), Number(m)-1, Number(d), Number(hh), Number(mm), Number(ss)));
+    return zonedLocalToUtc(Number(y), Number(m), Number(d), Number(hh), Number(mm), Number(ss), normaliseTzid(params.TZID));
   }
   return new Date(value);
+}
+
+function wallDateFor(date: Date, timeZone: string): Date {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  }).formatToParts(date);
+  const map = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return new Date(Date.UTC(Number(map.year), Number(map.month)-1, Number(map.day), Number(map.hour), Number(map.minute), Number(map.second)));
+}
+
+function instantForWallDate(wall: Date, timeZone: string): Date {
+  return zonedLocalToUtc(
+    wall.getUTCFullYear(), wall.getUTCMonth()+1, wall.getUTCDate(),
+    wall.getUTCHours(), wall.getUTCMinutes(), wall.getUTCSeconds(), timeZone,
+  );
 }
 
 function dateInBrisbane(date: Date): string {
@@ -169,33 +221,33 @@ function parseRRule(rule: string): Record<string, string> {
 const RRULE_WEEKDAYS: Record<string, number> = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
 
 function startOfDay(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours(), date.getMinutes(), date.getSeconds(), date.getMilliseconds());
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds(), date.getMilliseconds()));
 }
 
 function daysBetween(a: Date, b: Date): number {
-  const aa = new Date(a.getFullYear(), a.getMonth(), a.getDate()).getTime();
-  const bb = new Date(b.getFullYear(), b.getMonth(), b.getDate()).getTime();
+  const aa = Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate());
+  const bb = Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate());
   return Math.floor((bb - aa) / 86400000);
 }
 
 function monthsBetween(a: Date, b: Date): number {
-  return (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
+  return (b.getUTCFullYear() - a.getUTCFullYear()) * 12 + (b.getUTCMonth() - a.getUTCMonth());
 }
 
 function ordinalWeekdayMatch(date: Date, token: string): boolean {
   const match = token.match(/^([+-]?\d+)?(SU|MO|TU|WE|TH|FR|SA)$/);
   if (!match) return false;
   const weekday = RRULE_WEEKDAYS[match[2]];
-  if (date.getDay() !== weekday) return false;
+  if (date.getUTCDay() !== weekday) return false;
   if (!match[1]) return true;
 
   const ordinal = Number(match[1]);
   if (ordinal > 0) {
-    return Math.floor((date.getDate() - 1) / 7) + 1 === ordinal;
+    return Math.floor((date.getUTCDate() - 1) / 7) + 1 === ordinal;
   }
 
-  const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  return -(Math.floor((lastDay - date.getDate()) / 7) + 1) === ordinal;
+  const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+  return -(Math.floor((lastDay - date.getUTCDate()) / 7) + 1) === ordinal;
 }
 
 function matchesRRuleDate(date: Date, start: Date, rule: Record<string, string>): boolean {
@@ -208,45 +260,45 @@ function matchesRRuleDate(date: Date, start: Date, rule: Record<string, string>)
   const byDay = rule.BYDAY?.split(',').filter(Boolean) || [];
   const bySetPos = rule.BYSETPOS?.split(',').map(Number).filter(Number.isFinite) || [];
 
-  if (byMonth.length && !byMonth.includes(date.getMonth() + 1)) return false;
+  if (byMonth.length && !byMonth.includes(date.getUTCMonth() + 1)) return false;
 
   if (freq === 'DAILY') {
     if (daysBetween(start, date) % interval !== 0) return false;
   } else if (freq === 'WEEKLY') {
     const elapsedDays = daysBetween(start, date);
-    const weekIndex = Math.floor((elapsedDays + start.getDay()) / 7);
+    const weekIndex = Math.floor((elapsedDays + start.getUTCDay()) / 7);
     if (weekIndex % interval !== 0) return false;
-    const allowedDays = byDay.length ? byDay : [Object.keys(RRULE_WEEKDAYS).find(key => RRULE_WEEKDAYS[key] === start.getDay()) || 'SU'];
+    const allowedDays = byDay.length ? byDay : [Object.keys(RRULE_WEEKDAYS).find(key => RRULE_WEEKDAYS[key] === start.getUTCDay()) || 'SU'];
     if (!allowedDays.some(token => ordinalWeekdayMatch(date, token.replace(/^[+-]?\d+/, '')))) return false;
   } else if (freq === 'MONTHLY') {
     if (monthsBetween(start, date) % interval !== 0) return false;
-    if (!byMonthDay.length && !byDay.length && date.getDate() !== start.getDate()) return false;
+    if (!byMonthDay.length && !byDay.length && date.getUTCDate() !== start.getUTCDate()) return false;
   } else if (freq === 'YEARLY') {
-    if ((date.getFullYear() - start.getFullYear()) % interval !== 0) return false;
-    if (!byMonth.length && date.getMonth() !== start.getMonth()) return false;
-    if (!byMonthDay.length && !byDay.length && date.getDate() !== start.getDate()) return false;
+    if ((date.getUTCFullYear() - start.getUTCFullYear()) % interval !== 0) return false;
+    if (!byMonth.length && date.getUTCMonth() !== start.getUTCMonth()) return false;
+    if (!byMonthDay.length && !byDay.length && date.getUTCDate() !== start.getUTCDate()) return false;
   } else {
     return false;
   }
 
   if (byMonthDay.length) {
-    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-    if (!byMonthDay.some(day => day > 0 ? date.getDate() === day : date.getDate() === lastDay + day + 1)) return false;
+    const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+    if (!byMonthDay.some(day => day > 0 ? date.getUTCDate() === day : date.getUTCDate() === lastDay + day + 1)) return false;
   }
 
   if (byDay.length && freq !== 'WEEKLY' && !byDay.some(token => ordinalWeekdayMatch(date, token))) return false;
 
   if (bySetPos.length && byDay.length && freq === 'MONTHLY') {
     const matchingDays: number[] = [];
-    const lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+    const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
     for (let day = 1; day <= lastDay; day++) {
-      const candidate = new Date(date.getFullYear(), date.getMonth(), day, date.getHours(), date.getMinutes(), date.getSeconds());
+      const candidate = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), day, date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds()));
       if (byDay.some(token => ordinalWeekdayMatch(candidate, token.replace(/^[+-]?\d+/, '')))) matchingDays.push(day);
     }
     const selectedDays = bySetPos
       .map(pos => pos > 0 ? matchingDays[pos - 1] : matchingDays[matchingDays.length + pos])
       .filter((day): day is number => Number.isInteger(day));
-    if (!selectedDays.includes(date.getDate())) return false;
+    if (!selectedDays.includes(date.getUTCDate())) return false;
   }
 
   return true;
@@ -272,10 +324,11 @@ function expandEvent(event: any, year: number): PlannerEvent[] {
   const start: Date = event.start;
   const end: Date = event.end || event.start;
   const duration = end.getTime() - start.getTime();
+  const timeZone = normaliseTzid(event.tzid);
   const exclusions = new Set<number>((event.exdates || []).map((date: Date) => date.getTime()));
   const results: PlannerEvent[] = [];
 
-  const add = (current: Date): void => {
+  const addInstant = (current: Date): void => {
     if (exclusions.has(current.getTime())) return;
     results.push(...occurrence(event, current, new Date(current.getTime() + duration), year));
   };
@@ -283,28 +336,27 @@ function expandEvent(event: any, year: number): PlannerEvent[] {
   if (event.rrule) {
     const rule = parseRRule(event.rrule);
     const count = rule.COUNT ? Math.max(1, Number(rule.COUNT)) : Number.POSITIVE_INFINITY;
-    const until = rule.UNTIL ? parseIcsDate(rule.UNTIL, {}) : null;
-    const targetEnd = new Date(year, 11, 31, 23, 59, 59);
-    let current = new Date(start);
+    const until = rule.UNTIL ? parseIcsDate(rule.UNTIL, rule.UNTIL.endsWith('Z') ? {} : { TZID: event.tzid || TZ }) : null;
+    const wallStart = wallDateFor(start, timeZone);
+    const targetEnd = new Date(Date.UTC(year, 11, 31, 23, 59, 59));
+    let currentWall = new Date(wallStart);
     let generated = 0;
     let safety = 30000;
 
-    while (current <= targetEnd && generated < count && safety-- > 0) {
-      if (until && current > until) break;
-      if (matchesRRuleDate(current, start, rule)) {
+    while (currentWall <= targetEnd && generated < count && safety-- > 0) {
+      if (matchesRRuleDate(currentWall, wallStart, rule)) {
+        const current = instantForWallDate(currentWall, timeZone);
+        if (until && current > until) break;
         generated++;
-        add(current);
+        addInstant(current);
       }
-      current = new Date(current);
-      current.setDate(current.getDate() + 1);
+      currentWall = new Date(currentWall.getTime() + 86400000);
     }
   } else {
-    add(start);
+    addInstant(start);
   }
 
-  // Some calendar systems express a series with RDATE values rather than,
-  // or in addition to, RRULE. Previously these extra occurrences were ignored.
-  for (const rdate of (event.rdates || []) as Date[]) add(rdate);
+  for (const rdate of (event.rdates || []) as Date[]) addInstant(rdate);
 
   const seen = new Set<string>();
   return results.filter(item => {
@@ -316,12 +368,12 @@ function expandEvent(event: any, year: number): PlannerEvent[] {
 }
 
 function parseIcs(ics: string, year: number): PlannerEvent[] {
-  const events: PlannerEvent[] = [];
+  const sourceEvents: any[] = [];
   let current: any | null = null;
   for (const line of unfoldIcs(ics)) {
     if (line === 'BEGIN:VEVENT') { current = {}; continue; }
     if (line === 'END:VEVENT') {
-      if (current?.start) events.push(...expandEvent(current, year));
+      if (current?.start) sourceEvents.push(current);
       current = null;
       continue;
     }
@@ -332,14 +384,35 @@ function parseIcs(ics: string, year: number): PlannerEvent[] {
     else if (name === 'URL') current.url = value;
     else if (name === 'DESCRIPTION') current.description = unescapeIcs(value);
     else if (name === 'LOCATION') current.location = unescapeIcs(value);
+    else if (name === 'STATUS') current.status = value.toUpperCase();
     else if (name === 'RRULE') current.rrule = value;
     else if (name === 'RDATE') current.rdates = [...(current.rdates || []), ...value.split(',').filter(Boolean).map(item => parseIcsDate(item, params))];
     else if (name === 'EXDATE') current.exdates = [...(current.exdates || []), ...value.split(',').filter(Boolean).map(item => parseIcsDate(item, params))];
     else if (name === 'RECURRENCE-ID') current.recurrenceId = parseIcsDate(value, params);
-    else if (name === 'DTSTART') { current.start = parseIcsDate(value, params); current.allDay = params.VALUE === 'DATE' || /^\d{8}$/.test(value); }
+    else if (name === 'DTSTART') {
+      current.tzid = params.TZID || current.tzid || TZ;
+      current.start = parseIcsDate(value, params);
+      current.allDay = params.VALUE === 'DATE' || /^\d{8}$/.test(value);
+    }
     else if (name === 'DTEND') current.end = parseIcsDate(value, params);
   }
-  return events;
+
+  let events = sourceEvents
+    .filter(event => !event.recurrenceId && event.status !== 'CANCELLED')
+    .flatMap(event => expandEvent(event, year));
+
+  // A RECURRENCE-ID VEVENT replaces (or cancels) one generated instance of
+  // the master series. Treating it as an unrelated event produces duplicate
+  // or stale occurrences, which was another source of bad series plotting.
+  for (const override of sourceEvents.filter(event => event.recurrenceId)) {
+    const recurrenceTime = override.recurrenceId.getTime();
+    events = events.filter(event => !(event.uid === override.uid && Math.abs(new Date(event.start).getTime() - recurrenceTime) < 1000));
+    if (override.status !== 'CANCELLED' && override.start) {
+      events.push(...occurrence(override, override.start, override.end || override.start, year));
+    }
+  }
+
+  return events.sort((a, b) => `${a.date}${a.start}${a.title}`.localeCompare(`${b.date}${b.start}${b.title}`));
 }
 
 async function fetchIcs(url: string): Promise<string> {
