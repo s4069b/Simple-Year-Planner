@@ -209,6 +209,7 @@ body.shade-select-mode .day[data-date]{cursor:crosshair}
   flex-wrap:wrap;
 }
 .toolbar-control{
+  position:relative;
   flex:0 0 auto;
 }
 .toolbar-right{
