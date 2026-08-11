@@ -1,63 +1,59 @@
 # Architecture
 
-## Public side
+## Public planner
 
-`index.php`
-- accepts only the current or next year;
-- reads `data/calendars.json` and `data/shading.json`;
-- fetches cached public ICS events;
-- renders a twelve-month public planner.
-
-## ICS
-
-`lib/ics.php`
-- server-side HTTPS fetch, avoiding browser CORS restrictions;
-- lightweight VEVENT parser;
-- per-calendar/per-year JSON cache;
-- no persistent history.
-
-## Admin
-
-`admin/index.php`
-- CRUD for public ICS calendar definitions;
-- CRUD for shading ranges;
-- manual feed refresh;
-- file writes only.
-
-Authentication is intentionally external to the application. Protect the `/admin/` directory with the web server or host control panel.
-
-## Storage
-
-No SQL, D1, KV, Microsoft Graph or OAuth.
-
-Persistent files:
-- `data/calendars.json`
-- `data/shading.json`
-
-Ephemeral/rebuildable files:
-- `data/cache/*.json`
-
-
-## Scheduled calendar refresh
-
-Both deployment modes support automatic refresh.
+Both hosting modes use the same browser assets (`assets/app.js` and `assets/style.css`) and the same event data shape. The planner supports the previous year, current year and next year.
 
 ### Cloudflare
 
-`wrangler.jsonc` defines a Cron Trigger:
+`cloudflare/worker.ts` renders the public HTML, serves dynamic admin/API routes, reads configuration and calendar caches from R2, and performs scheduled syncs. Static files in `assets/` are served by Cloudflare Workers Static Assets.
 
-```text
-0 */3 * * *
-```
+### PHP / traditional hosting
 
-`cloudflare/worker.ts` implements `scheduled()` and refreshes enabled calendars for the current and next year.
+`index.php` renders the equivalent public toolbar and planner shell. `lib/ics.php` performs server-side ICS retrieval, recurrence expansion, timezone handling and cache generation. `assets/app.js` then renders the planner in the browser.
+
+The release deliberately does not contain `index.html`, avoiding common Apache/nginx index-precedence problems where a stale HTML file could shadow `index.php`.
+
+## ICS
+
+Both implementations handle public VEVENT data including:
+
+- DTSTART / DTEND and DURATION;
+- timezone IDs (including common Windows Australian timezone names);
+- recurring rules used by typical public calendar feeds;
+- RDATE / EXDATE;
+- RECURRENCE-ID overrides and cancellations;
+- descriptions, locations and URLs;
+- multi-day events.
+
+Calendar caches are per calendar and year and are rebuildable.
+
+## Administration
+
+Authentication is external to the application.
+
+### Cloudflare
+
+Protect `/api/admin/*` with Cloudflare Access. Authorised editors use the inline Calendar Manager and Shading Manager and may switch to Public view without logging out.
 
 ### PHP
 
-`sync.php` is a CLI-only script intended to be called by the hosting provider's cron scheduler.
+Protect `/admin/` with Apache/nginx/host authentication. The PHP admin page is intentionally simpler and provides core calendar, basic shading and manual refresh controls.
 
-Recommended default:
+## Storage
+
+No SQL database, Microsoft Graph, OAuth or private-calendar credentials are used.
+
+Cloudflare persists configuration/cache JSON in R2. PHP hosting persists equivalent JSON under `data/`.
+
+## Scheduled calendar refresh
+
+Both deployment modes default to every three hours.
+
+Cloudflare uses the Cron Trigger in `wrangler.jsonc`:
 
 ```text
 0 */3 * * *
 ```
+
+PHP hosting can run `sync.php` from the host's cron scheduler on the same cadence.

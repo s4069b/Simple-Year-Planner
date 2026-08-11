@@ -76,7 +76,7 @@ $shading=yp_shading();
 $years=yp_allowed_years();
 ?><!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Year Planner Admin</title><link rel="stylesheet" href="../assets/style.css">
+<title>Year Planner Admin</title><link rel="icon" href="../favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="../assets/style.css">
 <style>
 .admin{max-width:1000px;margin:24px auto;padding:0 16px}.card{background:#fff;border:1px solid #d8dee5;border-radius:10px;padding:16px;margin:14px 0}.card h2,.card h3{margin-top:0}.form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.form-grid label{display:flex;flex-direction:column;gap:4px}.form-grid .wide{grid-column:1/-1}input,select,button{font:inherit;padding:8px;border:1px solid #cbd3dc;border-radius:6px}button{cursor:pointer;background:#fff}.primary{background:#172126;color:#fff}.danger{color:#a11}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.notice{padding:10px;background:#eef6ef;border-radius:6px}.muted{color:#687580;font-size:.9rem}@media(max-width:700px){.form-grid{grid-template-columns:1fr}}
 </style></head><body>

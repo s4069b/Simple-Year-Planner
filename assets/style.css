@@ -995,3 +995,23 @@ body.has-admin-access .toolbar-view-switch{visibility:visible}
 .toolbar-control:not([open]) > .filter-panel{display:none}
 .toolbar-control[open] > .filter-panel{display:block}
 .toolbar-control-button{appearance:none;-webkit-appearance:none}
+
+
+/* --- Release visual consolidation: restrained macOS-style system UI --- */
+:root{color-scheme:light;--ui-border:#d7dde3;--ui-border-strong:#c5cdd5;--ui-text:#1d252c;--ui-muted:#68737d;--ui-surface:#fff;--ui-soft:#f5f7f9;--ui-shadow:0 8px 24px rgb(15 23 42 / .10)}
+html{-webkit-text-size-adjust:100%;text-rendering:optimizeLegibility}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",Arial,sans-serif;color:var(--ui-text);background:#f6f7f8;letter-spacing:-.006em}
+button,input,select,textarea{font:inherit}
+button,a,input,select,textarea{-webkit-tap-highlight-color:transparent}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid rgb(10 132 255 / .28);outline-offset:2px}
+.site-header,.toolbar{background:rgba(255,255,255,.96);border-color:var(--ui-border);backdrop-filter:saturate(1.15) blur(14px);-webkit-backdrop-filter:saturate(1.15) blur(14px)}
+.site-header h1{font-size:1.35rem;font-weight:650;letter-spacing:-.025em}
+.year-arrow,.today-button,.toolbar-control-button,.visitor-view-toggle,.planner-help-button,.toolbar-admin-action,.calendar-sync-button,.calendar-edit-button,.shade-edit-button{border-color:var(--ui-border-strong)!important;border-radius:8px!important;background:var(--ui-surface);box-shadow:0 1px 1px rgb(15 23 42 / .03);font-weight:600!important}
+.year-arrow:hover,.today-button:hover,.toolbar-control-button:hover,.visitor-view-toggle:hover,.planner-help-button:hover{background:var(--ui-soft)!important}
+.filter-panel,.planner-help-panel,.floating-editor{border-color:var(--ui-border);border-radius:12px;box-shadow:var(--ui-shadow)}
+.month{border-color:var(--ui-border);border-radius:12px;box-shadow:0 1px 2px rgb(15 23 42 / .035)}
+.month h2{background:#f3f5f7;font-weight:650;letter-spacing:-.012em}
+.weekday{font-weight:650;color:var(--ui-muted)}
+.event,.multi-day-segment{border-radius:5px}
+.small-screen-notice{border-radius:10px}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}

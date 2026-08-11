@@ -1230,5 +1230,6 @@
   handle?.addEventListener('pointerup', endDrag);
   handle?.addEventListener('pointercancel', endDrag);
 
+  bindToolbarManagerButtons();
   detectAdmin();
 })();

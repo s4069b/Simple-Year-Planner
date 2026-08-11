@@ -12,8 +12,10 @@ The project is deliberately simple:
 - no private-calendar access;
 - previous year, current year and next year only;
 - calendar and shading configuration stored as JSON/files;
-- inline administration for authorised users;
+- inline administration for authorised users in Cloudflare mode, with a simple protected `/admin/` page for PHP hosting;
 - automatic calendar refresh, with manual per-calendar sync available.
+
+A small `favicon.svg` calendar icon is included and used by both hosting modes.
 
 The same repository supports two hosting modes:
 
@@ -32,7 +34,7 @@ Public users can:
 - show or hide shading layers;
 - use the sticky calendar and shading legends while scrolling.
 
-Administrators can additionally:
+In **Cloudflare mode**, authorised editors can additionally:
 
 - add and edit public ICS calendars;
 - choose calendar colours;
@@ -43,7 +45,10 @@ Administrators can additionally:
 - remove individual dates or ranges;
 - delete shading layers;
 - use movable calendar and shading editor panels;
-- add a year-specific planner introduction with explanation text, up to two links, and an optional logo image URL.
+- add a year-specific planner introduction with explanation text, up to two links, and an optional logo image URL;
+- switch between **Edit** and **Public** views without logging out.
+
+In **PHP mode**, the public planner uses the same browser UI and calendar rendering, while `/admin/` provides a deliberately simpler server-side editor for calendars, basic shading ranges, and manual refresh.
 
 Administration is intentionally protected **outside the application** by the hosting platform.
 
@@ -119,9 +124,9 @@ Use Cloudflare Zero Trust / Access to protect:
 
 Allow only the users who should be able to edit calendars and shading.
 
-The browser detects administrator access by attempting to read the protected admin API. If Access permits the request, editing controls automatically appear on the public planner page.
+The browser detects administrator access by attempting to read the protected admin API. If Access permits the request, editing controls automatically appear on the public planner page. Administrators can switch between **Edit** and **Public** views without logging out.
 
-`/admin/` redirects back to the main planner.
+`/admin/` redirects through the protected admin login route and back to the planner.
 
 ## 6. Automatic syncing
 
@@ -169,11 +174,7 @@ Requirements:
 
 Upload the project to a PHP-capable web directory.
 
-The public entry point is:
-
-```text
-/index.php
-```
+The public entry point is `index.php`. This release intentionally omits `index.html`, because many Apache/nginx configurations prefer `index.html` and could otherwise bypass the PHP planner.
 
 ## 2. Make data directories writable
 
@@ -196,9 +197,7 @@ The project intentionally does not maintain its own user accounts.
 
 ## 4. Add calendars and shading
 
-Open the planner as an authorised administrator.
-
-Add one or more **public ICS URLs**, assign colours, then add optional shading layers directly on the planner.
+Open `/admin/` as an authorised administrator. Add one or more **public ICS URLs**, assign colours, then add optional shading ranges. The PHP admin is intentionally simpler than the Cloudflare inline editor.
 
 ## 5. Configure automatic syncing
 
@@ -240,7 +239,7 @@ If your provider requires a full PHP binary path, it may look like:
 
 The script is CLI-only and cannot be triggered through the browser.
 
-Administrators can still use **Sync** beside a calendar for an immediate refresh.
+Administrators can still use the manual refresh control in `/admin/` for an immediate refresh.
 
 ---
 
@@ -294,16 +293,7 @@ Examples:
 - shutdowns;
 - leave periods.
 
-A shading layer can contain multiple separate date ranges.
-
-Administrators can:
-
-- drag to select a range;
-- drag again elsewhere to add another range;
-- click a selected date to remove it;
-- remove individual saved ranges;
-- change the label and colour;
-- delete the whole layer.
+A shading layer can contain multiple separate date ranges. In Cloudflare edit mode, administrators can drag to add/remove ranges directly on the planner. The PHP compatibility admin supports basic start/end shading ranges; existing multi-range data is still rendered correctly by the PHP public planner.
 
 ---
 

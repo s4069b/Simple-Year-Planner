@@ -549,7 +549,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
 
   return html(`<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Year Planner ${year}</title><link rel="stylesheet" href="/style.css"></head><body>
+<title>Year Planner ${year}</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"></head><body>
 <div class="sticky-shell">
 <header class="site-header"><div><h1>Year Planner ${year}</h1></div>
 <nav class="year-nav">
@@ -634,6 +634,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
   <p>Calendars are refreshed automatically on the schedule configured for the host. This repository defaults to every 3 hours. Administrators can also use <strong>Sync</strong> beside a calendar for an immediate refresh.</p>
   <p>If you have administrator access, editing controls appear automatically.</p>
   <p><strong>Administrators:</strong> <a href="/admin">Log in to edit the planner</a>.</p>
+  <p><a href="https://github.com/s4069b/Simple-Year-Planner" target="_blank" rel="noopener">Simple Year Planner on GitHub ↗</a></p>
   ${(cals.length===0 || shades.length===0) ? `<div class="planner-help-alert"><strong>Setup is incomplete.</strong><p>${cals.length===0 ? 'No public calendars have been added. ' : ''}${shades.length===0 ? 'No shading has been added for this year. ' : ''}</p></div>` : ''}
 </div>
 </section>
@@ -793,17 +794,6 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
 
 <script>window.YEAR_PLANNER_DATA=${JSON.stringify({year, events, shading: shades, calendars: cals, intro}).replace(/</g,'\\u003c')};</script>
 <script src="/app.js"></script></body></html>`);
-}
-
-function adminPage(): Response {
-  return html(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Year Planner Admin</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/admin.css"></head>
-<body><div class="admin"><div class="row"><h1>Year Planner Admin</h1><a href="/">Public planner</a></div>
-<p class="muted">Cloudflare mode stores configuration and cache as JSON objects in R2. Protect <code>/admin/*</code> and <code>/api/admin/*</code> with Cloudflare Access.</p>
-<p id="notice" class="notice" hidden></p>
-<section class="card"><div class="row"><h2>Public ICS calendars</h2><button id="refresh">Refresh all calendars</button></div><div id="calendars"></div><button id="add-calendar">+ Add calendar</button></section>
-<section class="card"><h2>Shading</h2><p class="muted">Only the current year and next year are available.</p><div id="shading"></div><button id="add-shade">+ Add shading</button></section>
-</div><script src="/admin.js"></script></body></html>`);
 }
 
 async function apiConfig(env: Env): Promise<Response> {
