@@ -305,19 +305,38 @@ function matchesRRuleDate(date: Date, start: Date, rule: Record<string, string>)
 }
 
 function occurrence(event: any, start: Date, end: Date, year: number): PlannerEvent[] {
-  const day = dateInBrisbane(start);
-  if (!day.startsWith(`${year}-`)) return [];
-  return [{
-    uid: event.uid || `${event.summary || ''}:${start.toISOString()}`,
-    title: event.summary || 'Untitled event',
-    date: day,
-    start: start.toISOString(),
-    end: end.toISOString(),
-    url: event.url || null,
-    description: event.description || null,
-    location: event.location || null,
-    allDay: Boolean(event.allDay),
-  }];
+  // Calendar DTEND is exclusive. Using one millisecond before the end gives
+  // the final day actually occupied by both all-day and timed multi-day events
+  // (and avoids drawing an event on a day where it merely ends at midnight).
+  const occupiedEnd = end.getTime() > start.getTime() ? new Date(end.getTime() - 1) : start;
+  const firstDay = dateInBrisbane(start);
+  const lastDay = dateInBrisbane(occupiedEnd);
+
+  const [firstYear, firstMonth, firstDate] = firstDay.split('-').map(Number);
+  const [lastYear, lastMonth, lastDate] = lastDay.split('-').map(Number);
+  const cursor = new Date(Date.UTC(firstYear, firstMonth - 1, firstDate));
+  const last = new Date(Date.UTC(lastYear, lastMonth - 1, lastDate));
+  const results: PlannerEvent[] = [];
+
+  while (cursor <= last) {
+    const day = `${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, '0')}-${String(cursor.getUTCDate()).padStart(2, '0')}`;
+    if (day.startsWith(`${year}-`)) {
+      results.push({
+        uid: event.uid || `${event.summary || ''}:${start.toISOString()}`,
+        title: event.summary || 'Untitled event',
+        date: day,
+        start: start.toISOString(),
+        end: end.toISOString(),
+        url: event.url || null,
+        description: event.description || null,
+        location: event.location || null,
+        allDay: Boolean(event.allDay),
+      });
+    }
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return results;
 }
 
 function expandEvent(event: any, year: number): PlannerEvent[] {

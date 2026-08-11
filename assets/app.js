@@ -498,6 +498,23 @@
       document.querySelectorAll('.toolbar-control[data-manager]').forEach(el => {
         el.classList.add('toolbar-control--admin');
       });
+
+      // Admin access is detected asynchronously after the public toolbar has
+      // already been painted. Safari can retain the old flex geometry after
+      // the manager labels and admin actions become visible, making legend
+      // items overlap/duplicate until a <details> element is opened. Force one
+      // complete toolbar layout pass now so the initial admin view is identical
+      // to the settled view after opening a manager.
+      const toolbarFlow = document.querySelector('.toolbar-flow');
+      if (toolbarFlow) {
+        const previousDisplay = toolbarFlow.style.display;
+        requestAnimationFrame(() => {
+          toolbarFlow.style.display = 'none';
+          void toolbarFlow.offsetHeight;
+          toolbarFlow.style.display = previousDisplay;
+          void toolbarFlow.offsetHeight;
+        });
+      }
     } catch {
       adminMode = false;
     }
