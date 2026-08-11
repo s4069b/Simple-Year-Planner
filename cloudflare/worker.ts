@@ -580,6 +580,10 @@ async function parseBody(request: Request): Promise<any> {
 }
 
 async function handleAdminApi(request: Request, env: Env, path: string): Promise<Response> {
+  if (request.method === 'GET' && path === '/api/admin/login') {
+    return Response.redirect(new URL('/', request.url).toString(), 302);
+  }
+
   if (request.method === 'GET' && path === '/api/admin/config') return apiConfig(env);
 
   if (request.method === 'POST' && path === '/api/admin/calendar') {
