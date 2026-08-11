@@ -551,7 +551,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Year Planner ${year}</title><link rel="stylesheet" href="/style.css"></head><body>
 <div class="sticky-shell">
-<header class="site-header"><div><h1>Year Planner ${year}</h1><p>Public calendars and planning overview</p></div>
+<header class="site-header"><div><h1>Year Planner ${year}</h1></div>
 <nav class="year-nav">
   <a class="year-arrow ${year===years[0]?'disabled':''}" href="${year===years[0]?'#':`?year=${year-1}`}" aria-label="Previous year">←</a>
   <span class="year-current">${year}</span>

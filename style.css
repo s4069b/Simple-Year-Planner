@@ -905,3 +905,50 @@ body.has-admin-access .toolbar-view-switch{visibility:visible}
 @media print{
   .toolbar-view-switch{display:none!important}
 }
+
+
+/* --- Fixed11: stable manager widths and multi-day lanes below date numbers --- */
+.toolbar-flow{
+  grid-template-columns:9.6rem minmax(0,1fr) 9.6rem minmax(0,1fr);
+}
+.toolbar-control{min-width:0;width:9.6rem}
+.toolbar-control>summary{box-sizing:border-box;width:100%;justify-content:space-between}
+
+.week-row{
+  position:relative;
+  min-width:0;
+}
+.week-days{
+  position:relative;
+  z-index:1;
+}
+.week-event-lanes{
+  position:absolute;
+  z-index:4;
+  top:1.35rem;
+  left:0;
+  right:0;
+  display:grid;
+  grid-template-columns:repeat(7,minmax(0,1fr));
+  grid-auto-rows:18px;
+  min-height:calc(var(--multi-event-lanes,0) * 18px);
+  padding:0;
+  background:transparent;
+  pointer-events:none;
+}
+.week-event-lanes:empty{display:none}
+.week-event-lanes .multi-day-segment{pointer-events:auto}
+.week-row .day-events{
+  margin-top:calc(var(--multi-event-lanes,0) * 18px + 2px);
+}
+
+@media(max-width:1050px){
+  .toolbar-flow{grid-template-columns:9.6rem minmax(0,1fr)}
+}
+@media(max-width:720px){
+  .toolbar-flow{grid-template-columns:1fr}
+  .toolbar-control{width:auto}
+  .toolbar-control>summary{width:max-content;min-width:9.6rem}
+  .week-event-lanes{top:1.25rem;grid-auto-rows:17px;min-height:calc(var(--multi-event-lanes,0) * 17px)}
+  .week-row .day-events{margin-top:calc(var(--multi-event-lanes,0) * 17px + 2px)}
+}

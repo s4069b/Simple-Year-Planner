@@ -25,7 +25,6 @@ $intro=yp_planner_intro_for_year($year);
 <header class="site-header">
   <div>
     <h1>Year Planner <?=htmlspecialchars((string)$year)?></h1>
-    <p>Public calendars and planning overview</p>
   </div>
   <nav class="year-nav">
     <a class="year-arrow <?=$year===$years[0]?'disabled':''?>" href="<?=$year===$years[0]?'#':'?year='.($year-1)?>" aria-label="Previous year">←</a>

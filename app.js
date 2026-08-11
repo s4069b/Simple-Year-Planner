@@ -260,6 +260,7 @@
           weeks[week].eventLanes.append(bar);
         }
         weeks[week].eventLanes.style.setProperty('--multi-event-lanes', String(lanes.length));
+        weeks[week].wrap.style.setProperty('--multi-event-lanes', String(lanes.length));
       }
 
       section.append(calendar);
