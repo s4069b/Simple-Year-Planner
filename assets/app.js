@@ -992,7 +992,12 @@
     button.addEventListener('click', event => {
       event.stopPropagation();
       const shade = data.shading.find(item => item.id === button.dataset.shadeEdit);
-      if (shade) startShadeMode(shade);
+      if (shade) {
+        // Close the Shading Manager list before opening the separate editor.
+        const manager = document.querySelector('details[data-manager="shading"]');
+        if (manager) manager.open = false;
+        startShadeMode(shade);
+      }
     });
   });
   document.getElementById('shade-editor-close')?.addEventListener('click', hideShadeEditor);
