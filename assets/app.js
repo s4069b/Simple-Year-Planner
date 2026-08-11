@@ -623,6 +623,27 @@
     return body;
   }
 
+  function bindToolbarManagerButtons() {
+    document.querySelectorAll('.toolbar-control[data-manager]').forEach(control => {
+      const button = control.querySelector('.toolbar-control-button');
+      if (!button || button.dataset.bound === '1') return;
+      button.dataset.bound = '1';
+      button.addEventListener('click', event => {
+        event.preventDefault();
+        const nextOpen = !control.hasAttribute('open');
+        document.querySelectorAll('.toolbar-control[data-manager][open]').forEach(other => {
+          if (other !== control) {
+            other.removeAttribute('open');
+            const otherButton = other.querySelector('.toolbar-control-button');
+            if (otherButton) otherButton.setAttribute('aria-expanded', 'false');
+          }
+        });
+        control.toggleAttribute('open', nextOpen);
+        button.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
+      });
+    });
+  }
+
   function applyAdminPresentation() {
     const editing = adminMode && !visitorView;
     document.body.classList.toggle('is-admin', editing);
@@ -633,7 +654,11 @@
     document.querySelectorAll('.admin-manager-label').forEach(el => { el.hidden = !editing; });
     document.querySelectorAll('.toolbar-control[data-manager]').forEach(el => {
       el.classList.toggle('toolbar-control--admin', editing);
-      if (!editing) el.removeAttribute('open');
+      if (!editing) {
+        el.removeAttribute('open');
+        const button = el.querySelector('.toolbar-control-button');
+        if (button) button.setAttribute('aria-expanded', 'false');
+      }
     });
 
     document.body.classList.toggle('has-admin-access', adminMode);
@@ -653,7 +678,9 @@
       adminConfig = await adminApi('/api/admin/config');
       adminMode = true;
       visitorView = localStorage.getItem('simple-year-planner-view') === 'public';
-      applyAdminPresentation();
+      bindToolbarManagerButtons();
+
+  applyAdminPresentation();
       requestAnimationFrame(() => applyAdminPresentation());
     } catch {
       adminMode = false;
@@ -1032,7 +1059,7 @@
       if (shade) {
         // Close the Shading Manager list before opening the separate editor.
         const manager = document.querySelector('details[data-manager="shading"]');
-        if (manager) manager.open = false;
+        if (manager) { manager.open = false; manager.querySelector('.toolbar-control-button')?.setAttribute('aria-expanded', 'false'); }
         startShadeMode(shade);
       }
     });

@@ -573,7 +573,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
 <section class="toolbar">
 <div class="toolbar-flow">
   <details class="toolbar-control" data-manager="calendar">
-    <summary><span class="public-manager-label">Calendar Toggle</span><span class="admin-manager-label" hidden>Calendar Manager</span></summary>
+    <button class="toolbar-control-button" type="button" data-manager-toggle="calendar" aria-expanded="false"><span class="public-manager-label">Calendar Toggle</span><span class="admin-manager-label" hidden>Calendar Manager</span><span class="toolbar-control-caret" aria-hidden="true">▾</span></button>
     <div class="filter-panel">
       <div class="filter-list">${cals.length
         ? cals.map(c => `<div class="filter-item-row"><div class="calendar-filter-info"><label><input type="checkbox" class="calendar-toggle" data-calendar="${esc(c.id)}" checked><span class="swatch" style="background:${esc(c.colour)}"></span>${esc(c.name)}</label><span class="calendar-last-synced" data-last-synced="${esc(c.lastSynced || '')}">${c.lastSynced ? `Last synced ${esc(c.lastSynced)}` : 'Not synced yet'}</span></div><div class="filter-item-actions admin-only" hidden><button type="button" class="calendar-sync-button" data-calendar-sync="${esc(c.id)}">Sync</button><button type="button" class="calendar-edit-button" data-calendar-edit="${esc(c.id)}">Edit</button></div></div>`).join('')
@@ -593,7 +593,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
   </div>
 
   <details class="toolbar-control" data-manager="shading">
-    <summary><span class="public-manager-label">Shading Toggle</span><span class="admin-manager-label" hidden>Shading Manager</span></summary>
+    <button class="toolbar-control-button" type="button" data-manager-toggle="shading" aria-expanded="false"><span class="public-manager-label">Shading Toggle</span><span class="admin-manager-label" hidden>Shading Manager</span><span class="toolbar-control-caret" aria-hidden="true">▾</span></button>
     <div class="filter-panel">
       <div class="filter-list">${shades.length
         ? shades.map(s => `<div class="filter-item-row"><label><input type="checkbox" class="shade-toggle" data-shade="${esc(s.id)}" checked><span class="swatch" style="background:${esc(s.colour)}"></span>${esc(s.name)}</label><button type="button" class="admin-only shade-edit-button" data-shade-edit="${esc(s.id)}" hidden>Edit</button></div>`).join('')

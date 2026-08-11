@@ -957,3 +957,35 @@ body.has-admin-access .toolbar-view-switch{visibility:visible}
   .week-event-lanes{top:1.25rem;grid-auto-rows:17px;min-height:calc(var(--multi-event-lanes,0) * 17px)}
   .week-row .day-events{margin-top:calc(var(--multi-event-lanes,0) * 17px + 2px)}
 }
+
+/* Real toolbar buttons for public toggles and admin managers. */
+.toolbar-control > .toolbar-control-button{
+  box-sizing:border-box;
+  width:100%;
+  min-height:2rem;
+  display:inline-flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:.45rem;
+  padding:.35rem .7rem;
+  border:1px solid #cbd5e1;
+  border-radius:.55rem;
+  background:#fff;
+  color:#334155;
+  font:inherit;
+  font-size:.82rem;
+  font-weight:700;
+  line-height:1;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.toolbar-control > .toolbar-control-button:hover,
+.toolbar-control > .toolbar-control-button:focus-visible,
+.toolbar-control[open] > .toolbar-control-button{
+  border-color:#94a3b8;
+  background:#f8fafc;
+}
+.toolbar-control-caret{font-size:.72rem;transition:transform .16s ease}
+.toolbar-control[open] .toolbar-control-caret{transform:rotate(180deg)}
+.toolbar-control--admin > .toolbar-control-button{font-weight:750}
+@media(max-width:700px){.toolbar-control>.toolbar-control-button{width:max-content;min-width:9.6rem}}
