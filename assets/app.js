@@ -1,952 +1,750 @@
-(() => {
-  const data = window.YEAR_PLANNER_DATA;
-  const planner = document.getElementById('planner');
-  const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  const weekdays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+interface Env {
+  DATA: R2Bucket;
+  ASSETS: Fetcher;
+}
 
-  let adminMode = false;
-  let adminConfig = null;
-  let shadeMode = false;
-  let shadeStart = '';
-  let shadeEnd = '';
-  let draggingShade = false;
-  let editingShadeId = '';
-  let shadeRanges = [];
-  let shadeDragMode = 'add';
-  let shadePointerStart = '';
-  let shadePointerStartedSelected = false;
-  let shadePointerHandled = false;
+type CalendarConfig = {
+  id: string;
+  name: string;
+  url: string;
+  colour: string;
+  enabled: boolean;
+};
 
-  const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-  const rangesForShade = shade => {
-    if (Array.isArray(shade.ranges) && shade.ranges.length) return shade.ranges;
-    if (shade.start && shade.end) return [{ start: shade.start, end: shade.end }];
-    return [];
-  };
-  const shadesFor = date => data.shading.filter(s =>
-    !s.hidden && rangesForShade(s).some(r => r.start <= date && r.end >= date)
-  );
+type PlannerIntro = {
+  year: number;
+  text: string;
+  links: Array<{ label: string; url: string }>;
+  logoUrl?: string;
+};
 
-  function applyShade(cell, date) {
-    const shades = shadesFor(date);
-    cell.style.background = shades.length ? (shades[shades.length - 1].colour || '#eef2f7') : '';
-  }
+type ShadeRange = { start: string; end: string };
 
-  function renderPlanner() {
-    planner.replaceChildren();
+type ShadeConfig = {
+  id: string;
+  name: string;
+  year: number;
+  start?: string;
+  end?: string;
+  ranges?: ShadeRange[];
+  colour: string;
+};
 
-    for (let month = 0; month < 12; month++) {
-      const section = document.createElement('section');
-      section.className = 'month';
+type PlannerEvent = {
+  uid: string;
+  title: string;
+  date: string;
+  start: string;
+  end: string;
+  url?: string | null;
+  calendarId?: string;
+  calendarName?: string;
+  colour?: string;
+  textColour?: string;
+};
 
-      const heading = document.createElement('h2');
-      heading.textContent = monthNames[month];
-      section.append(heading);
+const CACHE_SECONDS = 900;
+const TZ = 'Australia/Brisbane';
 
-      const grid = document.createElement('div');
-      grid.className = 'month-grid';
+function json(data: unknown, status = 200): Response {
+  return Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
+}
 
-      for (const weekday of weekdays) {
-        const header = document.createElement('div');
-        header.className = 'weekday';
-        header.textContent = weekday;
-        grid.append(header);
-      }
-
-      const first = new Date(data.year, month, 1);
-      for (let i = 0; i < first.getDay(); i++) {
-        const blank = document.createElement('div');
-        blank.className = 'day blank';
-        grid.append(blank);
-      }
-
-      const days = new Date(data.year, month + 1, 0).getDate();
-      for (let day = 1; day <= days; day++) {
-        const date = iso(new Date(data.year, month, day));
-        const cell = document.createElement('div');
-        cell.className = 'day';
-        cell.dataset.date = date;
-        applyShade(cell, date);
-
-        const number = document.createElement('div');
-        number.className = 'date-number';
-        number.textContent = String(day);
-        cell.append(number);
-
-        for (const event of data.events.filter(e => e.date === date)) {
-          const item = document.createElement(event.url ? 'a' : 'div');
-          item.className = 'event';
-          item.dataset.calendar = event.calendarId;
-          item.textContent = event.title;
-          item.style.background = event.colour;
-          item.style.color = event.textColour || '#fff';
-
-          if (event.url) {
-            item.href = event.url;
-            item.target = '_blank';
-            item.rel = 'noopener';
-          }
-
-          cell.append(item);
-        }
-
-        grid.append(cell);
-      }
-
-      section.append(grid);
-      planner.append(section);
-    }
-
-    bindShadeCells();
-  }
-
-  function bindShadeCells() {
-    document.querySelectorAll('.day[data-date]').forEach(cell => {
-      cell.addEventListener('pointerdown', event => {
-        if (!adminMode || !shadeMode) return;
-
-        event.preventDefault();
-        draggingShade = true;
-        shadePointerHandled = false;
-        shadePointerStart = cell.dataset.date;
-        shadePointerStartedSelected = dateIsSelected(cell.dataset.date);
-        shadeDragMode = event.shiftKey ? 'extend' : 'add';
-
-        if (shadeDragMode === 'extend' && shadeRanges.length) {
-          shadeStart = shadeRanges[shadeRanges.length - 1].start;
-          shadeEnd = cell.dataset.date;
-        } else {
-          shadeStart = cell.dataset.date;
-          shadeEnd = cell.dataset.date;
-        }
-
-        paintShadeSelection();
-      });
-
-      cell.addEventListener('pointerenter', () => {
-        if (!adminMode || !shadeMode || !draggingShade) return;
-        shadeEnd = cell.dataset.date;
-        paintShadeSelection();
-      });
-
-      cell.addEventListener('pointerup', () => {
-        if (!adminMode || !shadeMode || !draggingShade) return;
-
-        const endedOn = cell.dataset.date;
-        draggingShade = false;
-
-        // A simple click on an already-selected cell toggles just that date off.
-        if (
-          shadeDragMode !== 'extend' &&
-          shadePointerStartedSelected &&
-          shadePointerStart === endedOn
-        ) {
-          shadePointerHandled = true;
-          removeDateFromRanges(endedOn);
-          shadeStart = '';
-          shadeEnd = '';
-          paintShadeSelection();
-
-          // For an existing saved layer, no remaining ranges means deletion is
-          // now the meaningful next action. For a brand-new layer, simply leave
-          // the selection empty so the user can choose again.
-          if (!shadeRanges.length && editingShadeId) showDeleteConfirm();
-          return;
-        }
-
-        commitCurrentRange();
-      });
-    });
-  }
-
-  document.addEventListener('pointerup', event => {
-    if (
-      draggingShade &&
-      shadeMode &&
-      !shadePointerHandled &&
-      !(event.target instanceof Element && event.target.closest('.day[data-date]'))
-    ) {
-      commitCurrentRange();
-    }
-    draggingShade = false;
-    shadePointerHandled = false;
+function html(body: string, status = 200): Response {
+  return new Response(body, {
+    status,
+    headers: { 'content-type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
   });
+}
 
-  function normaliseRange(a, b) {
-    return a <= b ? [a, b] : [b, a];
+function currentYear(): number {
+  return Number(new Intl.DateTimeFormat('en-AU', { timeZone: TZ, year: 'numeric' }).format(new Date()));
+}
+
+function allowedYears(): number[] {
+  const y = currentYear();
+  return [y - 1, y, y + 1];
+}
+
+function validYear(raw: string | null): number | null {
+  const y = raw ? Number(raw) : currentYear();
+  return allowedYears().includes(y) ? y : null;
+}
+
+function slug(value: string): string {
+  return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'calendar';
+}
+
+function colour(value: string | undefined, fallback: string): string {
+  return value && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
+}
+
+function textColour(hex: string): string {
+  const clean = hex.replace('#', '');
+  if (clean.length !== 6) return '#ffffff';
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) > 160 ? '#172126' : '#ffffff';
+}
+
+async function readJson<T>(env: Env, key: string, fallback: T): Promise<T> {
+  const object = await env.DATA.get(key);
+  if (!object) return fallback;
+  try {
+    return JSON.parse(await object.text()) as T;
+  } catch {
+    return fallback;
   }
+}
 
-  function nextDate(date, days) {
-    const d = new Date(`${date}T12:00:00`);
-    d.setDate(d.getDate() + days);
-    return iso(d);
+async function writeJson(env: Env, key: string, value: unknown): Promise<void> {
+  await env.DATA.put(key, JSON.stringify(value, null, 2) + '\n', {
+    httpMetadata: { contentType: 'application/json' },
+  });
+}
+
+function unfoldIcs(ics: string): string[] {
+  const lines = ics.replace(/\r\n?/g, '\n').split('\n');
+  const out: string[] = [];
+  for (const line of lines) {
+    if (/^[ \t]/.test(line) && out.length) out[out.length - 1] += line.slice(1);
+    else out.push(line);
   }
+  return out;
+}
 
-  function dateIsSelected(date) {
-    return shadeRanges.some(range => range.start <= date && range.end >= date);
+function unescapeIcs(value: string): string {
+  return value
+    .replace(/\\[nN]/g, '\n')
+    .replace(/\\,/g, ',')
+    .replace(/\\;/g, ';')
+    .replace(/\\\\/g, '\\');
+}
+
+function parseProp(line: string): { name: string; params: Record<string, string>; value: string } {
+  const colon = line.indexOf(':');
+  if (colon < 0) return { name: '', params: {}, value: '' };
+  const head = line.slice(0, colon).split(';');
+  const name = (head.shift() || '').toUpperCase();
+  const params: Record<string, string> = {};
+  for (const part of head) {
+    const eq = part.indexOf('=');
+    if (eq > 0) params[part.slice(0, eq).toUpperCase()] = part.slice(eq + 1).replace(/^"|"$/g, '');
   }
+  return { name, params, value: line.slice(colon + 1) };
+}
 
-  function mergeRanges(ranges) {
-    const sorted = ranges
-      .map(range => {
-        const [start, end] = normaliseRange(range.start, range.end);
-        return { start, end };
-      })
-      .sort((a, b) => a.start.localeCompare(b.start));
+function parseIcsDate(value: string, params: Record<string, string>): Date {
+  if (params.VALUE === 'DATE' || /^\d{8}$/.test(value)) {
+    return new Date(`${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}T00:00:00`);
+  }
+  if (/^\d{8}T\d{6}Z$/.test(value)) {
+    return new Date(`${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}T${value.slice(9, 11)}:${value.slice(11, 13)}:${value.slice(13, 15)}Z`);
+  }
+  if (/^\d{8}T\d{6}$/.test(value)) {
+    return new Date(`${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}T${value.slice(9, 11)}:${value.slice(11, 13)}:${value.slice(13, 15)}`);
+  }
+  return new Date(value);
+}
 
-    const merged = [];
-    for (const range of sorted) {
-      const previous = merged[merged.length - 1];
+function dateInBrisbane(date: Date): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(date);
+  const map = Object.fromEntries(parts.map(p => [p.type, p.value]));
+  return `${map.year}-${map.month}-${map.day}`;
+}
 
-      if (!previous || nextDate(previous.end, 1) < range.start) {
-        merged.push({ ...range });
-        continue;
-      }
+function parseRRule(rule: string): Record<string, string> {
+  return Object.fromEntries(rule.split(';').map(part => {
+    const i = part.indexOf('=');
+    return [part.slice(0, i).toUpperCase(), part.slice(i + 1).toUpperCase()];
+  }).filter(([key]) => Boolean(key)));
+}
 
-      if (range.end > previous.end) previous.end = range.end;
+function addInterval(date: Date, freq: string, interval: number): Date {
+  const next = new Date(date);
+  if (freq === 'DAILY') next.setDate(next.getDate() + interval);
+  else if (freq === 'WEEKLY') next.setDate(next.getDate() + interval * 7);
+  else if (freq === 'MONTHLY') next.setMonth(next.getMonth() + interval);
+  else if (freq === 'YEARLY') next.setFullYear(next.getFullYear() + interval);
+  return next;
+}
+
+function occurrence(event: any, start: Date, end: Date, year: number): PlannerEvent[] {
+  const day = dateInBrisbane(start);
+  if (!day.startsWith(`${year}-`)) return [];
+  return [{
+    uid: event.uid || `${event.summary || ''}:${start.toISOString()}`,
+    title: event.summary || 'Untitled event',
+    date: day,
+    start: start.toISOString(),
+    end: end.toISOString(),
+    url: event.url || null,
+  }];
+}
+
+function expandEvent(event: any, year: number): PlannerEvent[] {
+  const start: Date = event.start;
+  const end: Date = event.end || event.start;
+  if (!event.rrule) return occurrence(event, start, end, year);
+
+  const rule = parseRRule(event.rrule);
+  const freq = rule.FREQ || '';
+  const interval = Math.max(1, Number(rule.INTERVAL || 1));
+  const count = Math.max(1, Number(rule.COUNT || 1000));
+  const until = rule.UNTIL ? parseIcsDate(rule.UNTIL, {}) : null;
+  const duration = end.getTime() - start.getTime();
+  const results: PlannerEvent[] = [];
+  let current = new Date(start);
+  let n = 0;
+  let safety = 2000;
+
+  while (n < count && safety-- > 0) {
+    if (until && current > until) break;
+    results.push(...occurrence(event, current, new Date(current.getTime() + duration), year));
+    if (current.getFullYear() > year + 1) break;
+    const next = addInterval(current, freq, interval);
+    if (next.getTime() === current.getTime()) break;
+    current = next;
+    n++;
+  }
+  return results;
+}
+
+function parseIcs(ics: string, year: number): PlannerEvent[] {
+  const events: PlannerEvent[] = [];
+  let current: any | null = null;
+  for (const line of unfoldIcs(ics)) {
+    if (line === 'BEGIN:VEVENT') { current = {}; continue; }
+    if (line === 'END:VEVENT') {
+      if (current?.start) events.push(...expandEvent(current, year));
+      current = null;
+      continue;
     }
-
-    return merged;
+    if (!current) continue;
+    const { name, params, value } = parseProp(line);
+    if (name === 'UID') current.uid = value;
+    else if (name === 'SUMMARY') current.summary = unescapeIcs(value);
+    else if (name === 'URL') current.url = value;
+    else if (name === 'RRULE') current.rrule = value;
+    else if (name === 'DTSTART') current.start = parseIcsDate(value, params);
+    else if (name === 'DTEND') current.end = parseIcsDate(value, params);
   }
+  return events;
+}
 
-  function removeDateFromRanges(date) {
-    const next = [];
+async function fetchIcs(url: string): Promise<string> {
+  const response = await fetch(url, {
+    headers: { 'user-agent': 'Simple Year Planner/1.0', accept: 'text/calendar,*/*' },
+  });
+  const body = await response.text();
+  if (!response.ok || !body.includes('BEGIN:VCALENDAR')) {
+    throw new Error(`Unable to download a valid ICS calendar (${response.status}).`);
+  }
+  return body;
+}
 
-    for (const range of shadeRanges) {
-      if (date < range.start || date > range.end) {
-        next.push(range);
-        continue;
-      }
+async function calendars(env: Env): Promise<CalendarConfig[]> {
+  return readJson<CalendarConfig[]>(env, 'calendars.json', []);
+}
 
-      if (range.start < date) {
-        next.push({ start: range.start, end: nextDate(date, -1) });
-      }
+async function shading(env: Env): Promise<ShadeConfig[]> {
+  return readJson<ShadeConfig[]>(env, 'shading.json', []);
+}
 
-      if (date < range.end) {
-        next.push({ start: nextDate(date, 1), end: range.end });
+async function plannerIntros(env: Env): Promise<PlannerIntro[]> {
+  return readJson<PlannerIntro[]>(env, 'planner-intros.json', []);
+}
+
+async function calendarLastSynced(env: Env, id: string): Promise<string | null> {
+  const meta = await readJson<{lastSynced?: string}>(env, `cache/${id}-sync.json`, {});
+  return meta.lastSynced || null;
+}
+
+async function markCalendarSynced(env: Env, id: string): Promise<void> {
+  await writeJson(env, `cache/${id}-sync.json`, { lastSynced: new Date().toISOString() });
+}
+
+
+function shadeRanges(shade: ShadeConfig): ShadeRange[] {
+  if (Array.isArray(shade.ranges) && shade.ranges.length) return shade.ranges;
+  if (shade.start && shade.end) return [{ start: shade.start, end: shade.end }];
+  return [];
+}
+
+async function eventsForYear(env: Env, year: number, force = false): Promise<PlannerEvent[]> {
+  const all: PlannerEvent[] = [];
+  for (const calendar of await calendars(env)) {
+    if (!calendar.enabled || !calendar.url) continue;
+    const key = `cache/${calendar.id}-${year}.json`;
+    let events: PlannerEvent[] | null = null;
+    if (!force) {
+      const cached = await env.DATA.get(key);
+      const uploaded = cached?.uploaded?.getTime() || 0;
+      if (cached && Date.now() - uploaded < CACHE_SECONDS * 1000) {
+        try { events = JSON.parse(await cached.text()) as PlannerEvent[]; } catch {}
       }
     }
-
-    shadeRanges = mergeRanges(next);
-  }
-
-  function paintShadeSelection() {
-    document.querySelectorAll('.day.is-shade-selection').forEach(el => el.classList.remove('is-shade-selection'));
-    document.querySelectorAll('.day.is-shade-selection-preview').forEach(el => el.classList.remove('is-shade-selection-preview'));
-
-    for (const range of shadeRanges) {
-      document.querySelectorAll('.day[data-date]').forEach(cell => {
-        if (cell.dataset.date >= range.start && cell.dataset.date <= range.end) {
-          cell.classList.add('is-shade-selection');
-        }
+    if (events === null) {
+      try {
+        events = parseIcs(await fetchIcs(calendar.url), year);
+        await writeJson(env, key, events);
+        await markCalendarSynced(env, calendar.id);
+      } catch {
+        events = await readJson<PlannerEvent[]>(env, key, []);
+      }
+    }
+    const c = colour(calendar.colour, '#356a8a');
+    for (const event of events) {
+      all.push({
+        ...event,
+        calendarId: calendar.id,
+        calendarName: calendar.name,
+        colour: c,
+        textColour: textColour(c),
       });
     }
+  }
+  all.sort((a, b) => `${a.date}${a.title}`.localeCompare(`${b.date}${b.title}`));
+  return all;
+}
 
-    if (shadeStart && shadeEnd) {
-      const [start, end] = normaliseRange(shadeStart, shadeEnd);
-      document.querySelectorAll('.day[data-date]').forEach(cell => {
-        if (cell.dataset.date >= start && cell.dataset.date <= end) {
-          cell.classList.add('is-shade-selection-preview');
-        }
-      });
+function esc(value: unknown): string {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]!));
+}
+
+async function publicPage(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const year = validYear(url.searchParams.get('year'));
+  if (!year) return html('Only the current year and next year are available.', 404);
+
+  const years = allowedYears();
+  const cals = await Promise.all(
+    (await calendars(env))
+      .filter(c => c.enabled)
+      .map(async c => ({ ...c, lastSynced: await calendarLastSynced(env, c.id) }))
+  );
+  const shades = (await shading(env))
+    .filter(s => s.year === year)
+    .map(s => ({ ...s, ranges: shadeRanges(s) }));
+  const intro = (await plannerIntros(env)).find(item => item.year === year) || {
+    year, text: '', links: [], logoUrl: ''
+  };
+  const events = await eventsForYear(env, year);
+
+  return html(`<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Year Planner ${year}</title><link rel="stylesheet" href="/style.css"></head><body>
+<div class="sticky-shell">
+<header class="site-header"><div><h1>Year Planner ${year}</h1><p>Public calendars and planning overview</p></div>
+<nav class="year-nav">
+  <a class="year-arrow ${year===years[0]?'disabled':''}" href="${year===years[0]?'#':`?year=${year-1}`}" aria-label="Previous year">←</a>
+  <span class="year-current">${year}</span>
+  <a class="year-arrow ${year===years[years.length-1]?'disabled':''}" href="${year===years[years.length-1]?'#':`?year=${year+1}`}" aria-label="Next year">→</a>
+  <button id="today-button" class="today-button" type="button">Today</button>
+</nav></header>
+
+<section id="planner-intro" class="planner-intro ${intro.text || intro.logoUrl || intro.links.length ? '' : 'planner-intro--empty'}">
+  <div class="planner-intro-content">
+    ${intro.logoUrl ? `<img class="planner-intro-logo" src="${esc(intro.logoUrl)}" alt="">` : ''}
+    <div class="planner-intro-copy">
+      ${intro.text ? `<p>${esc(intro.text).replace(/\n/g,'<br>')}</p>` : '<p class="planner-intro-admin-note admin-only" hidden>Add an explanation for this year’s planner.</p>'}
+      ${intro.links.length ? `<div class="planner-intro-links">${intro.links.map(link => `<a href="${esc(link.url)}" target="_blank" rel="noopener">${esc(link.label || link.url)}</a>`).join('')}</div>` : ''}
+    </div>
+  </div>
+  <button id="planner-intro-edit" class="planner-intro-edit admin-only" type="button" hidden title="Edit planner introduction" aria-label="Edit planner introduction">✎</button>
+</section>
+
+<section class="toolbar">
+<div class="toolbar-flow">
+  <details class="toolbar-control" data-manager="calendar">
+    <summary><span class="public-manager-label">Calendar</span><span class="admin-manager-label" hidden>Calendar Manager</span></summary>
+    <div class="filter-panel">
+      <div class="filter-list">${cals.length
+        ? cals.map(c => `<div class="filter-item-row"><div class="calendar-filter-info"><label><input type="checkbox" class="calendar-toggle" data-calendar="${esc(c.id)}" checked><span class="swatch" style="background:${esc(c.colour)}"></span>${esc(c.name)}</label><span class="calendar-last-synced" data-last-synced="${esc(c.lastSynced || '')}">${c.lastSynced ? `Last synced ${esc(c.lastSynced)}` : 'Not synced yet'}</span></div><div class="filter-item-actions admin-only" hidden><button type="button" class="calendar-sync-button" data-calendar-sync="${esc(c.id)}">Sync</button><button type="button" class="calendar-edit-button" data-calendar-edit="${esc(c.id)}">Edit</button></div></div>`).join('')
+        : '<div class="filter-empty">No public calendars have been added yet.</div>'
+      }</div>
+      <div class="filter-action-row">
+        <button id="add-calendar-button" class="admin-only toolbar-admin-action" type="button" hidden>+ Add calendar</button>
+      </div>
+    </div>
+  </details>
+
+  <div id="calendar-legend" class="toolbar-legend calendar-legend ${cals.length ? '' : 'toolbar-legend--empty'}">
+    ${cals.length
+      ? cals.map(c => `<div class="toolbar-legend-item" data-legend-calendar="${esc(c.id)}"><span class="toolbar-legend-swatch" style="background:${esc(c.colour)}"></span><span>${esc(c.name)}</span></div>`).join('')
+      : '<span class="toolbar-legend-empty">No calendars</span>'
     }
+  </div>
 
-    renderShadeRangesList();
+  <details class="toolbar-control" data-manager="shading">
+    <summary><span class="public-manager-label">Shading</span><span class="admin-manager-label" hidden>Shading Manager</span></summary>
+    <div class="filter-panel">
+      <div class="filter-list">${shades.length
+        ? shades.map(s => `<div class="filter-item-row"><label><input type="checkbox" class="shade-toggle" data-shade="${esc(s.id)}" checked><span class="swatch" style="background:${esc(s.colour)}"></span>${esc(s.name)}</label><button type="button" class="admin-only shade-edit-button" data-shade-edit="${esc(s.id)}" hidden>Edit</button></div>`).join('')
+        : '<div class="filter-empty">No shading has been added for this year.</div>'
+      }</div>
+      <div class="filter-action-row">
+        <button id="add-shading-button" class="admin-only toolbar-admin-action" type="button" hidden>+ Add shading</button>
+      </div>
+    </div>
+  </details>
 
-    const status = document.getElementById('shade-selection-status');
-    if (status) {
-      status.textContent = shadeRanges.length
-        ? `${shadeRanges.length} range${shadeRanges.length === 1 ? '' : 's'} selected. Drag to add another.`
-        : 'Drag across the planner to select dates.';
+  <div id="shading-legend" class="toolbar-legend shading-legend ${shades.length ? '' : 'toolbar-legend--empty'}">
+    ${shades.length
+      ? shades.map(s => `<div class="toolbar-legend-item" data-legend-shade="${esc(s.id)}"><span class="toolbar-legend-swatch" style="background:${esc(s.colour)}"></span><span>${esc(s.name)}</span></div>`).join('')
+      : '<span class="toolbar-legend-empty">No shading</span>'
     }
+  </div>
+</div>
+
+<div class="toolbar-right">
+  <button id="planner-help-button" class="planner-help-button ${(cals.length===0 || shades.length===0) ? 'planner-help-button--attention' : ''}" type="button" title="Help">?</button>
+</div>
+
+<div id="planner-help-panel" class="planner-help-panel" hidden>
+  <div class="planner-help-panel__header">
+    <strong>Year Planner help</strong>
+    <button id="planner-help-close" type="button" aria-label="Close help">×</button>
+  </div>
+  <p>Use <strong>Calendar</strong> to show or hide public calendars.</p>
+  <p>Use <strong>Shading</strong> to show or hide planning overlays.</p>
+  <p>For authorised editors, these controls become <strong>Calendar Manager</strong> and <strong>Shading Manager</strong>.</p>
+  <p>The calendar and shading legends stay visible while you scroll.</p>
+  <p>The previous year, current year and next year are available.</p>
+  <p>Calendars are refreshed automatically on the schedule configured for the host. This repository defaults to every 3 hours. Administrators can also use <strong>Sync</strong> beside a calendar for an immediate refresh.</p>
+  <p>If you have administrator access, editing controls appear automatically.</p>
+  <p><strong>Administrators:</strong> <a href="/api/admin/config" target="_blank" rel="noopener">Log in to edit the planner</a>. After signing in through Cloudflare Access, return to this page and refresh it.</p>
+  ${(cals.length===0 || shades.length===0) ? `<div class="planner-help-alert"><strong>Setup is incomplete.</strong><p>${cals.length===0 ? 'No public calendars have been added. ' : ''}${shades.length===0 ? 'No shading has been added for this year. ' : ''}</p></div>` : ''}
+</div>
+</section>
+</div>
+
+<main id="planner" class="planner"></main>
+
+<div id="planner-intro-editor" class="floating-editor planner-intro-editor" hidden>
+  <div class="floating-editor-header">
+    <h2>Edit planner introduction</h2>
+    <div class="floating-editor-tools">
+      <div id="planner-intro-drag-handle" class="dialog-grab" title="Drag to move" aria-label="Drag to move">⋮⋮</div>
+      <button id="planner-intro-close" type="button" aria-label="Close">×</button>
+    </div>
+  </div>
+
+  <form id="planner-intro-form" class="planner-intro-form">
+    <label>
+      <span>Explanation</span>
+      <textarea name="text" rows="4" placeholder="What is this year’s planner for?"></textarea>
+    </label>
+
+    <label>
+      <span>Logo image URL</span>
+      <input name="logoUrl" type="url" placeholder="https://example.org/logo.png">
+    </label>
+
+    <div class="planner-intro-link-grid">
+      <label><span>Link 1 label</span><input name="link1Label" placeholder="More information"></label>
+      <label><span>Link 1 URL</span><input name="link1Url" type="url" placeholder="https://…"></label>
+      <label><span>Link 2 label</span><input name="link2Label" placeholder="Related page"></label>
+      <label><span>Link 2 URL</span><input name="link2Url" type="url" placeholder="https://…"></label>
+    </div>
+
+    <input name="year" type="hidden" value="${year}">
+
+    <div class="planner-intro-actions">
+      <button type="submit" class="primary">Save</button>
+    </div>
+  </form>
+</div>
+
+<div id="calendar-editor-panel" class="floating-editor calendar-editor-panel" hidden>
+  <div class="floating-editor-header">
+    <h2 id="calendar-editor-heading">Add calendar</h2>
+    <div class="floating-editor-tools">
+      <div id="calendar-dialog-drag-handle" class="dialog-grab" title="Drag to move" aria-label="Drag to move">⋮⋮</div>
+      <button id="calendar-editor-close" type="button" aria-label="Close">×</button>
+    </div>
+  </div>
+
+  <form id="calendar-editor-form" class="calendar-editor-form">
+    <div class="calendar-label-colour-row">
+      <label class="calendar-label-field">
+        <span>Label</span>
+        <input name="name" required placeholder="e.g. Public events">
+      </label>
+      <label class="calendar-colour-field">
+        <span>Colour</span>
+        <input id="calendar-colour-input" name="colour" type="color" value="#356a8a" aria-label="Calendar colour">
+      </label>
+    </div>
+
+    <label class="calendar-url-field">
+      <span>Public ICS URL</span>
+      <input name="url" type="url" required placeholder="https://…/calendar.ics">
+    </label>
+
+    <label class="calendar-enabled-row">
+      <input name="enabled" type="checkbox" checked>
+      <span>Enabled</span>
+    </label>
+
+    <input name="id" type="hidden">
+
+    <div class="calendar-editor-actions">
+      <div class="calendar-delete-group">
+        <button type="button" id="calendar-delete-button" class="calendar-delete-button" hidden>Delete calendar</button>
+        <div id="calendar-delete-confirm-group" class="calendar-delete-confirm-group" hidden>
+          <button type="button" id="calendar-delete-confirm" class="calendar-delete-confirm">Confirm delete</button>
+          <button type="button" id="calendar-delete-cancel">Cancel</button>
+        </div>
+      </div>
+      <button type="button" id="calendar-sync-current" hidden>Sync</button>
+      <button type="submit" class="primary">Save calendar</button>
+    </div>
+  </form>
+</div>
+
+<div id="shade-editor-panel" class="floating-editor shade-editor-panel" hidden>
+  <div class="floating-editor-header">
+    <h2 id="shade-editor-heading">Add shading</h2>
+    <div class="floating-editor-tools">
+      <div id="shade-dialog-drag-handle" class="dialog-grab" title="Drag to move" aria-label="Drag to move">⋮⋮</div>
+      <button id="shade-editor-close" type="button" aria-label="Close">×</button>
+    </div>
+  </div>
+
+  <p class="muted">Drag across the planner to choose a range.</p>
+  <div id="shade-selection-status" class="shade-selection-status">Drag across the planner to select dates.</div>
+
+  <form id="shade-editor-form" class="shade-form">
+    <div class="shade-label-colour-row">
+      <label class="shade-label-field">
+        <span>Label</span>
+        <input name="name" required placeholder="e.g. School holidays">
+      </label>
+
+      <label class="shade-colour-field">
+        <span>Colour</span>
+        <input id="shade-colour-input" name="colour" type="color" value="#e5e7eb" aria-label="Shading colour">
+      </label>
+    </div>
+
+    <input name="id" type="hidden">
+    <input name="year" type="hidden" value="${year}">
+
+    <div class="shade-ranges-block">
+      <div class="shade-ranges-title">Selected ranges</div>
+      <div id="shade-ranges-list" class="shade-ranges-list"></div>
+      <div class="shade-ranges-help">Drag on the planner to add another range. Hold Shift while dragging to extend the current range instead.</div>
+    </div>
+
+    <div class="shade-form-actions">
+      <div class="shade-delete-group">
+        <button type="button" id="shade-delete-button" class="shade-delete-button" hidden>Delete layer</button>
+        <div id="shade-delete-confirm-group" class="shade-delete-confirm-group" hidden>
+          <button type="button" id="shade-delete-confirm" class="shade-delete-confirm">Confirm delete</button>
+          <button type="button" id="shade-delete-cancel">Cancel</button>
+        </div>
+      </div>
+      <button type="button" id="shade-selection-clear">Clear all ranges</button>
+      <button type="submit" class="primary">Save shading</button>
+    </div>
+  </form>
+</div>
+
+<script>window.YEAR_PLANNER_DATA=${JSON.stringify({year, events, shading: shades, calendars: cals, intro}).replace(/</g,'\\u003c')};</script>
+<script src="/app.js"></script></body></html>`);
+}
+
+function adminPage(): Response {
+  return html(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Year Planner Admin</title><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/admin.css"></head>
+<body><div class="admin"><div class="row"><h1>Year Planner Admin</h1><a href="/">Public planner</a></div>
+<p class="muted">Cloudflare mode stores configuration and cache as JSON objects in R2. Protect <code>/admin/*</code> and <code>/api/admin/*</code> with Cloudflare Access.</p>
+<p id="notice" class="notice" hidden></p>
+<section class="card"><div class="row"><h2>Public ICS calendars</h2><button id="refresh">Refresh all calendars</button></div><div id="calendars"></div><button id="add-calendar">+ Add calendar</button></section>
+<section class="card"><h2>Shading</h2><p class="muted">Only the current year and next year are available.</p><div id="shading"></div><button id="add-shade">+ Add shading</button></section>
+</div><script src="/admin.js"></script></body></html>`);
+}
+
+async function apiConfig(env: Env): Promise<Response> {
+  return json({ ok: true, calendars: await calendars(env), shading: await shading(env), years: allowedYears() });
+}
+
+async function parseBody(request: Request): Promise<any> {
+  const type = request.headers.get('content-type') || '';
+  if (!type.includes('application/json')) throw new Error('JSON request required.');
+  return request.json();
+}
+
+async function handleAdminApi(request: Request, env: Env, path: string): Promise<Response> {
+  if (request.method === 'GET' && path === '/api/admin/config') return apiConfig(env);
+
+  if (request.method === 'POST' && path === '/api/admin/calendar') {
+    const body = await parseBody(request);
+    const items = await calendars(env);
+    const id = String(body.id || `${slug(body.name || 'calendar')}-${crypto.randomUUID().slice(0,6)}`);
+    const row: CalendarConfig = {
+      id,
+      name: String(body.name || 'Calendar').trim(),
+      url: String(body.url || '').trim(),
+      colour: colour(String(body.colour || ''), '#356a8a'),
+      enabled: body.enabled !== false,
+    };
+    if (!/^https?:\/\//i.test(row.url)) return json({ok:false,error:'Enter a public HTTP(S) ICS URL.'},400);
+    const index = items.findIndex(c => c.id === id);
+    if (index >= 0) items[index] = row; else items.push(row);
+    await writeJson(env, 'calendars.json', items);
+    return json({ok:true});
   }
 
-  function commitCurrentRange() {
-    if (!shadeStart || !shadeEnd) return;
-
-    const [start, end] = normaliseRange(shadeStart, shadeEnd);
-
-    if (shadeDragMode === 'extend' && shadeRanges.length) {
-      shadeRanges[shadeRanges.length - 1] = { start, end };
-    } else {
-      shadeRanges.push({ start, end });
-    }
-
-    // Collapse overlapping or immediately adjacent selections so each date is
-    // represented only once in the layer.
-    shadeRanges = mergeRanges(shadeRanges);
-
-    shadeStart = '';
-    shadeEnd = '';
-    shadeDragMode = 'add';
-    paintShadeSelection();
+  if (request.method === 'DELETE' && path.startsWith('/api/admin/calendar/')) {
+    const id = decodeURIComponent(path.split('/').pop() || '');
+    await writeJson(env, 'calendars.json', (await calendars(env)).filter(c => c.id !== id));
+    for (const year of allowedYears()) await env.DATA.delete(`cache/${id}-${year}.json`);
+    return json({ok:true});
   }
 
-  function renderShadeRangesList() {
-    const host = document.getElementById('shade-ranges-list');
-    if (!host) return;
+  if (request.method === 'POST' && path === '/api/admin/planner-intro') {
+    const body = await parseBody(request);
+    const year = Number(body.year);
+    if (!allowedYears().includes(year)) return json({ok:false,error:'Invalid year.'},400);
 
-    host.replaceChildren();
-
-    if (!shadeRanges.length) {
-      const empty = document.createElement('div');
-      empty.className = 'shade-range-empty';
-      empty.textContent = 'No ranges selected yet.';
-      host.append(empty);
-      return;
-    }
-
-    shadeRanges.forEach((range, index) => {
-      const row = document.createElement('div');
-      row.className = 'shade-range-row';
-
-      const text = document.createElement('span');
-      text.textContent = `${range.start} → ${range.end}`;
-
-      const remove = document.createElement('button');
-      remove.type = 'button';
-      remove.className = 'shade-range-remove';
-      remove.textContent = 'Remove';
-      remove.addEventListener('click', () => {
-        shadeRanges.splice(index, 1);
-        paintShadeSelection();
-
-        if (!shadeRanges.length && editingShadeId) {
-          showDeleteConfirm();
-        }
-      });
-
-      row.append(text, remove);
-      host.append(row);
-    });
-  }
-
-  function showDeleteConfirm() {
-    const deleteButton = document.getElementById('shade-delete-button');
-    const confirmGroup = document.getElementById('shade-delete-confirm-group');
-
-    if (deleteButton) deleteButton.hidden = true;
-    if (confirmGroup) confirmGroup.hidden = false;
-  }
-
-  function hideDeleteConfirm() {
-    const deleteButton = document.getElementById('shade-delete-button');
-    const confirmGroup = document.getElementById('shade-delete-confirm-group');
-
-    if (deleteButton) deleteButton.hidden = !editingShadeId;
-    if (confirmGroup) confirmGroup.hidden = true;
-  }
-
-  function startShadeMode(shade = null) {
-    shadeMode = true;
-    draggingShade = false;
-    document.body.classList.add('shade-select-mode');
-
-    const form = document.getElementById('shade-editor-form');
-    const heading = document.getElementById('shade-editor-heading');
-
-    editingShadeId = shade?.id || '';
-    shadeStart = '';
-    shadeEnd = '';
-    shadeRanges = shade
-      ? mergeRanges(rangesForShade(shade).map(range => ({ ...range })))
+    const links = Array.isArray(body.links)
+      ? body.links
+          .map((link: any) => ({
+            label: String(link?.label || '').trim(),
+            url: String(link?.url || '').trim(),
+          }))
+          .filter((link: any) => link.url)
+          .slice(0, 2)
       : [];
 
-    if (heading) heading.textContent = shade ? 'Edit shading' : 'Add shading';
-
-    hideDeleteConfirm();
-
-    if (form) {
-      form.reset();
-      form.elements.id.value = editingShadeId;
-      form.elements.year.value = shade?.year || data.year;
-      form.elements.name.value = shade?.name || '';
-      form.elements.colour.value = shade?.colour || '#e5e7eb';
-    }
-
-    paintShadeSelection();
-    showShadeEditor();
-  }
-
-  function stopShadeMode() {
-    shadeMode = false;
-    draggingShade = false;
-    shadeStart = '';
-    shadeEnd = '';
-    shadeRanges = [];
-    document.body.classList.remove('shade-select-mode');
-    document.querySelectorAll('.day.is-shade-selection').forEach(el => el.classList.remove('is-shade-selection'));
-  }
-
-  function showShadeEditor() {
-    const panel = document.getElementById('shade-editor-panel');
-    if (panel) panel.hidden = false;
-  }
-
-  function hideShadeEditor() {
-    const panel = document.getElementById('shade-editor-panel');
-    if (panel) panel.hidden = true;
-    stopShadeMode();
-  }
-
-  async function adminApi(path, options = {}) {
-    const response = await fetch(path, {
-      ...options,
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        ...(options.headers || {}),
-      },
-      credentials: 'same-origin',
-    });
-
-    const type = response.headers.get('content-type') || '';
-    if (!response.ok || !type.includes('application/json')) {
-      throw new Error('Administrator access is not available.');
-    }
-
-    const body = await response.json();
-    if (body.ok === false) throw new Error(body.error || 'Request failed.');
-    return body;
-  }
-
-  async function detectAdmin() {
-    try {
-      adminConfig = await adminApi('/api/admin/config');
-      adminMode = true;
-      document.body.classList.add('is-admin');
-      document.querySelectorAll('.admin-only').forEach(el => {
-        el.hidden = false;
-      });
-      document.querySelectorAll('.public-manager-label').forEach(el => {
-        el.hidden = true;
-      });
-      document.querySelectorAll('.admin-manager-label').forEach(el => {
-        el.hidden = false;
-      });
-      document.querySelectorAll('.toolbar-control[data-manager]').forEach(el => {
-        el.classList.add('toolbar-control--admin');
-      });
-    } catch {
-      adminMode = false;
-    }
-  }
-
-  function openPlannerIntroEditor() {
-    if (!adminMode) return;
-
-    const panel = document.getElementById('planner-intro-editor');
-    const form = document.getElementById('planner-intro-form');
-    if (!panel || !form) return;
-
-    const intro = data.intro || { text: '', links: [], logoUrl: '' };
-    const links = Array.isArray(intro.links) ? intro.links : [];
-
-    form.elements.text.value = intro.text || '';
-    form.elements.logoUrl.value = intro.logoUrl || '';
-    form.elements.link1Label.value = links[0]?.label || '';
-    form.elements.link1Url.value = links[0]?.url || '';
-    form.elements.link2Label.value = links[1]?.label || '';
-    form.elements.link2Url.value = links[1]?.url || '';
-
-    panel.hidden = false;
-  }
-
-  function closePlannerIntroEditor() {
-    const panel = document.getElementById('planner-intro-editor');
-    if (panel) panel.hidden = true;
-  }
-
-  document.getElementById('planner-intro-edit')?.addEventListener('click', openPlannerIntroEditor);
-  document.getElementById('planner-intro-close')?.addEventListener('click', closePlannerIntroEditor);
-
-  document.getElementById('planner-intro-form')?.addEventListener('submit', async event => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const fd = new FormData(form);
-
-    const links = [];
-    const link1Url = String(fd.get('link1Url') || '').trim();
-    const link2Url = String(fd.get('link2Url') || '').trim();
-
-    if (link1Url) {
-      links.push({
-        label: String(fd.get('link1Label') || '').trim(),
-        url: link1Url,
-      });
-    }
-    if (link2Url) {
-      links.push({
-        label: String(fd.get('link2Label') || '').trim(),
-        url: link2Url,
-      });
-    }
-
-    await adminApi('/api/admin/planner-intro', {
-      method: 'POST',
-      body: JSON.stringify({
-        year: data.year,
-        text: fd.get('text'),
-        logoUrl: fd.get('logoUrl'),
-        links,
-      }),
-    });
-
-    location.reload();
-  });
-
-  // Movable planner intro editor.
-  const introPanel = document.getElementById('planner-intro-editor');
-  const introHandle = document.getElementById('planner-intro-drag-handle');
-  let introDrag = null;
-
-  introHandle?.addEventListener('pointerdown', event => {
-    if (!introPanel) return;
-    event.preventDefault();
-
-    const rect = introPanel.getBoundingClientRect();
-    introPanel.style.left = `${rect.left}px`;
-    introPanel.style.top = `${rect.top}px`;
-    introPanel.style.right = 'auto';
-
-    introDrag = {
-      pointerId: event.pointerId,
-      offsetX: event.clientX - rect.left,
-      offsetY: event.clientY - rect.top,
-    };
-
-    introHandle.setPointerCapture?.(event.pointerId);
-  });
-
-  introHandle?.addEventListener('pointermove', event => {
-    if (!introPanel || !introDrag || introDrag.pointerId !== event.pointerId) return;
-
-    const left = Math.max(0, Math.min(window.innerWidth - introPanel.offsetWidth, event.clientX - introDrag.offsetX));
-    const top = Math.max(0, Math.min(window.innerHeight - introPanel.offsetHeight, event.clientY - introDrag.offsetY));
-
-    introPanel.style.left = `${left}px`;
-    introPanel.style.top = `${top}px`;
-  });
-
-  const endIntroDrag = event => {
-    if (!introDrag) return;
-    if (event.pointerId !== undefined && event.pointerId !== introDrag.pointerId) return;
-    introDrag = null;
-  };
-
-  introHandle?.addEventListener('pointerup', endIntroDrag);
-  introHandle?.addEventListener('pointercancel', endIntroDrag);
-
-  let editingCalendarId = '';
-
-  function hideCalendarDeleteConfirm() {
-    const deleteButton = document.getElementById('calendar-delete-button');
-    const confirmGroup = document.getElementById('calendar-delete-confirm-group');
-    if (deleteButton) deleteButton.hidden = !editingCalendarId;
-    if (confirmGroup) confirmGroup.hidden = true;
-  }
-
-  function showCalendarDeleteConfirm() {
-    const deleteButton = document.getElementById('calendar-delete-button');
-    const confirmGroup = document.getElementById('calendar-delete-confirm-group');
-    if (deleteButton) deleteButton.hidden = true;
-    if (confirmGroup) confirmGroup.hidden = false;
-  }
-
-  function openCalendarEditor(calendar = null) {
-    if (!adminMode) return;
-
-    editingCalendarId = calendar?.id || '';
-
-    const panel = document.getElementById('calendar-editor-panel');
-    const form = document.getElementById('calendar-editor-form');
-    const heading = document.getElementById('calendar-editor-heading');
-    const syncButton = document.getElementById('calendar-sync-current');
-
-    if (!panel || !form) return;
-
-    form.reset();
-    form.elements.id.value = editingCalendarId;
-    form.elements.name.value = calendar?.name || '';
-    form.elements.colour.value = calendar?.colour || '#356a8a';
-    form.elements.url.value = calendar?.url || '';
-    form.elements.enabled.checked = calendar?.enabled !== false;
-
-    if (heading) heading.textContent = calendar ? 'Edit calendar' : 'Add calendar';
-    if (syncButton) syncButton.hidden = !calendar;
-
-    hideCalendarDeleteConfirm();
-    panel.hidden = false;
-  }
-
-  function closeCalendarEditor() {
-    const panel = document.getElementById('calendar-editor-panel');
-    if (panel) panel.hidden = true;
-    editingCalendarId = '';
-  }
-
-  async function syncCalendar(id, button = null) {
-    if (!id) return;
-    const original = button?.textContent || 'Sync';
-    if (button) {
-      button.disabled = true;
-      button.textContent = 'Syncing…';
-    }
-
-    try {
-      await adminApi('/api/admin/sync/' + encodeURIComponent(id), {
-        method: 'POST',
-        body: '{}',
-      });
-      if (button) button.textContent = 'Synced';
-      window.setTimeout(() => location.reload(), 450);
-    } catch (error) {
-      if (button) {
-        button.disabled = false;
-        button.textContent = original;
+    for (const link of links) {
+      if (!/^https?:\/\//i.test(link.url)) {
+        return json({ok:false,error:'Links must use http:// or https://.'},400);
       }
-      alert(error instanceof Error ? error.message : 'Calendar sync failed.');
-    }
-  }
-
-
-  function todayIso() {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-  }
-
-  function focusToday() {
-    const today = todayIso();
-    const todayYear = Number(today.slice(0,4));
-
-    if (todayYear !== data.year) {
-      window.location.href = `/?year=${todayYear}&today=1`;
-      return;
     }
 
-    const cell = document.querySelector(`.day[data-date="${today}"]`);
-    if (!cell) return;
+    const logoUrl = String(body.logoUrl || '').trim();
+    if (logoUrl && !/^https?:\/\//i.test(logoUrl)) {
+      return json({ok:false,error:'Logo URL must use http:// or https://.'},400);
+    }
 
-    cell.scrollIntoView({
-      behavior: 'smooth',
-      block: 'center',
-      inline: 'nearest',
-    });
+    const items = await plannerIntros(env);
+    const row: PlannerIntro = {
+      year,
+      text: String(body.text || '').trim(),
+      links,
+      logoUrl,
+    };
 
-    cell.classList.remove('today-focus');
-    requestAnimationFrame(() => {
-      cell.classList.add('today-focus');
-      window.setTimeout(() => cell.classList.remove('today-focus'), 2200);
-    });
+    const index = items.findIndex(item => item.year === year);
+    if (row.text || row.links.length || row.logoUrl) {
+      if (index >= 0) items[index] = row; else items.push(row);
+    } else if (index >= 0) {
+      items.splice(index, 1);
+    }
+
+    await writeJson(env, 'planner-intros.json', items);
+    return json({ok:true});
   }
 
-  renderPlanner();
+  if (request.method === 'POST' && path === '/api/admin/shading') {
+    const body = await parseBody(request);
+    const year = Number(body.year);
+    if (!allowedYears().includes(year)) return json({ok:false,error:'Invalid year.'},400);
+    const incomingRanges = Array.isArray(body.ranges)
+      ? body.ranges
+          .map((range: any) => ({
+            start: String(range?.start || ''),
+            end: String(range?.end || ''),
+          }))
+          .filter((range: ShadeRange) => range.start && range.end && range.start <= range.end)
+      : [];
 
+    const fallbackStart = String(body.start || '');
+    const fallbackEnd = String(body.end || '');
+    const ranges: ShadeRange[] = incomingRanges.length
+      ? incomingRanges
+      : (fallbackStart && fallbackEnd && fallbackStart <= fallbackEnd
+          ? [{ start: fallbackStart, end: fallbackEnd }]
+          : []);
 
-  document.getElementById('today-button')?.addEventListener('click', focusToday);
+    if (!ranges.length) return json({ok:false,error:'Add at least one shading range.'},400);
 
-  if (new URLSearchParams(window.location.search).get('today') === '1') {
-    window.setTimeout(focusToday, 120);
+    const items = await shading(env);
+    const id = String(body.id || `shade-${crypto.randomUUID().slice(0,8)}`);
+    const row: ShadeConfig = {
+      id,
+      name: String(body.name || 'Shading').trim(),
+      year,
+      ranges,
+      colour: colour(String(body.colour || ''), '#e5e7eb'),
+    };
+    const index = items.findIndex(s => s.id === id);
+    if (index >= 0) items[index] = row; else items.push(row);
+    await writeJson(env, 'shading.json', items);
+    return json({ok:true});
   }
 
-  document.querySelectorAll('.calendar-last-synced[data-last-synced]').forEach(el => {
-    const raw = el.dataset.lastSynced;
-    if (!raw) return;
-    const date = new Date(raw);
-    if (Number.isNaN(date.getTime())) return;
-    el.textContent = `Last synced ${date.toLocaleString([], {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    })}`;
-  });
+  if (request.method === 'DELETE' && path.startsWith('/api/admin/shading/')) {
+    const id = decodeURIComponent(path.split('/').pop() || '');
+    await writeJson(env, 'shading.json', (await shading(env)).filter(s => s.id !== id));
+    return json({ok:true});
+  }
 
-  document.querySelectorAll('.calendar-toggle').forEach(cb => {
-    cb.addEventListener('change', () => {
-      document.querySelectorAll(`[data-calendar="${CSS.escape(cb.dataset.calendar)}"]`).forEach(el => {
-        el.hidden = !cb.checked;
-      });
+  if (request.method === 'POST' && path.startsWith('/api/admin/sync/')) {
+    const id = decodeURIComponent(path.split('/').pop() || '');
+    const calendar = (await calendars(env)).find(item => item.id === id);
+    if (!calendar) return json({ok:false,error:'Calendar not found.'},404);
 
-      const legendItem = document.querySelector(`[data-legend-calendar="${CSS.escape(cb.dataset.calendar)}"]`);
-      if (legendItem) legendItem.hidden = !cb.checked;
-    });
-  });
-
-  document.querySelectorAll('.shade-toggle').forEach(cb => {
-    cb.addEventListener('change', () => {
-      const shade = data.shading.find(s => s.id === cb.dataset.shade);
-      if (shade) shade.hidden = !cb.checked;
-
-      document.querySelectorAll('.day[data-date]').forEach(cell => {
-        applyShade(cell, cell.dataset.date);
-      });
-
-      const legendItem = document.querySelector(`[data-legend-shade="${CSS.escape(cb.dataset.shade)}"]`);
-      if (legendItem) legendItem.hidden = !cb.checked;
-    });
-  });
-
-  // Toolbar pop-outs close when clicking outside.
-  document.addEventListener('click', event => {
-    document.querySelectorAll('.toolbar details[open]').forEach(details => {
-      if (!details.contains(event.target)) details.removeAttribute('open');
-    });
-  });
-
-  // Help panel.
-  const helpButton = document.getElementById('planner-help-button');
-  const helpPanel = document.getElementById('planner-help-panel');
-  const helpClose = document.getElementById('planner-help-close');
-
-  helpButton?.addEventListener('click', event => {
-    event.stopPropagation();
-    helpPanel.hidden = !helpPanel.hidden;
-  });
-
-  helpPanel?.addEventListener('click', event => event.stopPropagation());
-  helpClose?.addEventListener('click', () => { helpPanel.hidden = true; });
-
-  document.addEventListener('click', () => {
-    if (helpPanel) helpPanel.hidden = true;
-  });
-
-  document.getElementById('add-calendar-button')?.addEventListener('click', () => openCalendarEditor());
-
-  document.querySelectorAll('[data-calendar-edit]').forEach(button => {
-    button.addEventListener('click', event => {
-      event.stopPropagation();
-      const calendar = (data.calendars || []).find(item => item.id === button.dataset.calendarEdit);
-      if (calendar) openCalendarEditor(calendar);
-    });
-  });
-
-  document.querySelectorAll('[data-calendar-sync]').forEach(button => {
-    button.addEventListener('click', event => {
-      event.stopPropagation();
-      syncCalendar(button.dataset.calendarSync, button);
-    });
-  });
-
-  document.getElementById('calendar-editor-close')?.addEventListener('click', closeCalendarEditor);
-
-  document.getElementById('calendar-editor-form')?.addEventListener('submit', async event => {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const fd = new FormData(form);
-
-    await adminApi('/api/admin/calendar', {
-      method: 'POST',
-      body: JSON.stringify({
-        id: fd.get('id') || undefined,
-        name: fd.get('name'),
-        colour: fd.get('colour'),
-        url: fd.get('url'),
-        enabled: form.elements.enabled.checked,
-      }),
-    });
-
-    location.reload();
-  });
-
-  document.getElementById('calendar-delete-button')?.addEventListener('click', () => {
-    if (editingCalendarId) showCalendarDeleteConfirm();
-  });
-
-  document.getElementById('calendar-delete-cancel')?.addEventListener('click', hideCalendarDeleteConfirm);
-
-  document.getElementById('calendar-delete-confirm')?.addEventListener('click', async () => {
-    if (!editingCalendarId) return;
-    await adminApi('/api/admin/calendar/' + encodeURIComponent(editingCalendarId), {
-      method: 'DELETE',
-      body: '{}',
-    });
-    location.reload();
-  });
-
-  document.getElementById('calendar-sync-current')?.addEventListener('click', event => {
-    if (editingCalendarId) syncCalendar(editingCalendarId, event.currentTarget);
-  });
-
-  const calendarColour = document.getElementById('calendar-colour-input');
-  const calendarEditorPanel = document.getElementById('calendar-editor-panel');
-  calendarColour?.addEventListener('change', () => calendarColour.blur());
-  calendarEditorPanel?.addEventListener('pointerdown', event => {
-    if (calendarColour && event.target !== calendarColour) calendarColour.blur();
-  });
-
-  document.getElementById('add-shading-button')?.addEventListener('click', () => startShadeMode());
-
-  document.querySelectorAll('[data-shade-edit]').forEach(button => {
-    button.addEventListener('click', event => {
-      event.stopPropagation();
-      const shade = data.shading.find(item => item.id === button.dataset.shadeEdit);
-      if (shade) startShadeMode(shade);
-    });
-  });
-  document.getElementById('shade-editor-close')?.addEventListener('click', hideShadeEditor);
-
-  document.getElementById('shade-selection-clear')?.addEventListener('click', () => {
-    shadeRanges = [];
-    shadeStart = '';
-    shadeEnd = '';
-    draggingShade = false;
-    paintShadeSelection();
-
-    if (editingShadeId) showDeleteConfirm();
-  });
-
-
-  document.getElementById('shade-delete-button')?.addEventListener('click', () => {
-    if (!editingShadeId) return;
-    showDeleteConfirm();
-  });
-
-  document.getElementById('shade-delete-cancel')?.addEventListener('click', () => {
-    hideDeleteConfirm();
-  });
-
-  document.getElementById('shade-delete-confirm')?.addEventListener('click', async () => {
-    if (!editingShadeId) return;
-
-    await adminApi('/api/admin/shading/' + encodeURIComponent(editingShadeId), {
-      method: 'DELETE',
-      body: '{}',
-    });
-
-    location.reload();
-  });
-
-  const shadeColour = document.getElementById('shade-colour-input');
-
-  shadeColour?.addEventListener('change', () => {
-    shadeColour.blur();
-  });
-
-  document.getElementById('shade-editor-form')?.addEventListener('submit', async event => {
-    event.preventDefault();
-
-    const form = event.currentTarget;
-
-    if (!shadeRanges.length) {
-      if (editingShadeId) {
-        showDeleteConfirm();
-      } else {
-        alert('Drag across the planner to add at least one shading range.');
+    for (const year of allowedYears()) {
+      const key = `cache/${calendar.id}-${year}.json`;
+      try {
+        const events = parseIcs(await fetchIcs(calendar.url), year);
+        await writeJson(env, key, events);
+      } catch (error) {
+        return json({
+          ok:false,
+          error:error instanceof Error ? error.message : 'Calendar sync failed.',
+        }, 400);
       }
-      return;
     }
 
-    const fd = new FormData(form);
+    await markCalendarSynced(env, calendar.id);
+    return json({ok:true});
+  }
 
-    await adminApi('/api/admin/shading', {
-      method: 'POST',
-      body: JSON.stringify({
-        id: fd.get('id') || undefined,
-        name: fd.get('name'),
-        colour: fd.get('colour'),
-        year: Number(fd.get('year')),
-        ranges: shadeRanges,
-      }),
-    });
+  if (request.method === 'POST' && path === '/api/admin/sync') {
+    for (const year of allowedYears()) await eventsForYear(env, year, true);
+    return json({ok:true});
+  }
 
-    location.reload();
-  });
+  return json({ok:false,error:'Not found.'},404);
+}
 
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+    const path = url.pathname;
 
-  const shadeEditorPanel = document.getElementById('shade-editor-panel');
-  shadeEditorPanel?.addEventListener('pointerdown', event => {
-    const colour = document.getElementById('shade-colour-input');
-    if (!colour) return;
-
-    // Only a click on the actual colour input counts as "inside" the colour
-    // control. Any other click in the shading dialog should dismiss the picker.
-    if (event.target !== colour) {
-      colour.blur();
+    if (path === '/admin' || path === '/admin/') {
+      return Response.redirect(new URL('/?admin=1', request.url).toString(), 302);
     }
-  });
+    if (path.startsWith('/api/admin/')) {
+      try { return await handleAdminApi(request, env, path); }
+      catch (error) { return json({ok:false,error:error instanceof Error ? error.message : 'Request failed.'},400); }
+    }
+    if (path === '/' || path === '/index.html') return publicPage(request, env);
+    return new Response('Not found', { status: 404 });
+  },
 
-  // Movable calendar editor.
-  const calendarPanel = document.getElementById('calendar-editor-panel');
-  const calendarHandle = document.getElementById('calendar-dialog-drag-handle');
-  let calendarDrag = null;
-
-  calendarHandle?.addEventListener('pointerdown', event => {
-    if (!calendarPanel) return;
-    event.preventDefault();
-
-    const rect = calendarPanel.getBoundingClientRect();
-    calendarPanel.style.left = `${rect.left}px`;
-    calendarPanel.style.top = `${rect.top}px`;
-    calendarPanel.style.right = 'auto';
-
-    calendarDrag = {
-      pointerId: event.pointerId,
-      offsetX: event.clientX - rect.left,
-      offsetY: event.clientY - rect.top,
-    };
-
-    calendarHandle.setPointerCapture?.(event.pointerId);
-  });
-
-  calendarHandle?.addEventListener('pointermove', event => {
-    if (!calendarPanel || !calendarDrag || calendarDrag.pointerId !== event.pointerId) return;
-
-    const left = Math.max(0, Math.min(window.innerWidth - calendarPanel.offsetWidth, event.clientX - calendarDrag.offsetX));
-    const top = Math.max(0, Math.min(window.innerHeight - calendarPanel.offsetHeight, event.clientY - calendarDrag.offsetY));
-
-    calendarPanel.style.left = `${left}px`;
-    calendarPanel.style.top = `${top}px`;
-  });
-
-  const endCalendarDrag = event => {
-    if (!calendarDrag) return;
-    if (event.pointerId !== undefined && event.pointerId !== calendarDrag.pointerId) return;
-    calendarDrag = null;
-  };
-
-  calendarHandle?.addEventListener('pointerup', endCalendarDrag);
-  calendarHandle?.addEventListener('pointercancel', endCalendarDrag);
-
-  // Movable shading panel.
-  const shadePanel = document.getElementById('shade-editor-panel');
-  const handle = document.getElementById('shade-dialog-drag-handle');
-  let drag = null;
-
-  handle?.addEventListener('pointerdown', event => {
-    if (!shadePanel) return;
-    event.preventDefault();
-
-    const rect = shadePanel.getBoundingClientRect();
-    shadePanel.style.left = `${rect.left}px`;
-    shadePanel.style.top = `${rect.top}px`;
-    shadePanel.style.right = 'auto';
-
-    drag = {
-      pointerId: event.pointerId,
-      offsetX: event.clientX - rect.left,
-      offsetY: event.clientY - rect.top,
-    };
-
-    handle.setPointerCapture?.(event.pointerId);
-  });
-
-  handle?.addEventListener('pointermove', event => {
-    if (!shadePanel || !drag || drag.pointerId !== event.pointerId) return;
-
-    const left = Math.max(0, Math.min(window.innerWidth - shadePanel.offsetWidth, event.clientX - drag.offsetX));
-    const top = Math.max(0, Math.min(window.innerHeight - shadePanel.offsetHeight, event.clientY - drag.offsetY));
-
-    shadePanel.style.left = `${left}px`;
-    shadePanel.style.top = `${top}px`;
-  });
-
-  const endDrag = event => {
-    if (!drag) return;
-    if (event.pointerId !== undefined && event.pointerId !== drag.pointerId) return;
-    drag = null;
-  };
-
-  handle?.addEventListener('pointerup', endDrag);
-  handle?.addEventListener('pointercancel', endDrag);
-
-  detectAdmin();
-})();
+  async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
+    for (const year of allowedYears()) {
+      await eventsForYear(env, year, true);
+    }
+  },
+} satisfies ExportedHandler<Env>;
