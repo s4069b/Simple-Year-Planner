@@ -235,36 +235,16 @@
           lanes[lane].push([segment.column, segmentEndColumn]);
           segment.lane = lane;
 
-          // Paint the event as one joined strip made from pieces inside each day
-          // cell. This preserves cell borders/backgrounds instead of covering the
-          // calendar with a spanning grid item.
-          let pieceDate = segment.start;
-          while (pieceDate <= segment.end) {
-            const target = dayCells.get(pieceDate);
-            if (target) {
-              const piece = makeEventButton(segment.event, 'event multi-day-piece');
-              piece.textContent = '';
-              piece.title = segment.event.title;
-              piece.style.setProperty('--event-lane', String(lane));
-              if (pieceDate === segment.start) piece.classList.add('multi-day-piece--start');
-              if (pieceDate === segment.end) piece.classList.add('multi-day-piece--end');
-              target.multiDayHost.append(piece);
-            }
-            pieceDate = nextDate(pieceDate, 1);
-          }
-
-          // The label itself spans the visible week segment but has no coloured
-          // background, so the underlying day cells remain visible. The coloured
-          // pieces above provide the joined bar and the label is centred over it.
-          const label = document.createElement('div');
-          label.className = 'multi-day-label';
-          label.textContent = segment.event.title;
-          label.style.gridColumn = `${segment.column} / span ${segment.span}`;
-          label.style.gridRow = String(week + 2);
-          label.style.setProperty('--event-lane', String(lane));
-          label.style.color = segment.event.textColour || '#fff';
-          label.setAttribute('aria-hidden', 'true');
-          grid.append(label);
+          // One event bar per visible week segment. The day cells reserve
+          // this lane, so the bar does not cover the date number or ordinary events.
+          // Keeping colour and label in the same element avoids Safari/grid drift.
+          const bar = makeEventButton(segment.event, 'event multi-day-segment');
+          bar.textContent = segment.event.title;
+          bar.style.gridColumn = `${segment.column} / span ${segment.span}`;
+          bar.style.gridRow = String(week + 2);
+          bar.style.setProperty('--event-lane', String(lane));
+          bar.title = segment.event.title;
+          grid.append(bar);
         }
 
         const laneCount = lanes.length;
