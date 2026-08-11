@@ -171,10 +171,14 @@
         number.textContent = String(day);
         cell.append(number);
 
+        const multiDayHost = document.createElement('div');
+        multiDayHost.className = 'multi-day-lanes';
+        cell.append(multiDayHost);
+
         const eventHost = document.createElement('div');
         eventHost.className = 'day-events';
         cell.append(eventHost);
-        dayCells.set(date, { cell, eventHost, day });
+        dayCells.set(date, { cell, multiDayHost, eventHost, day });
 
         grid.append(cell);
       }
@@ -231,13 +235,36 @@
           lanes[lane].push([segment.column, segmentEndColumn]);
           segment.lane = lane;
 
-          const bar = makeEventButton(segment.event, 'event multi-day-event');
-          bar.style.gridColumn = `${segment.column} / span ${segment.span}`;
-          bar.style.gridRow = String(week + 2);
-          bar.style.setProperty('--event-lane', String(lane));
-          bar.dataset.segmentStart = segment.start;
-          bar.dataset.segmentEnd = segment.end;
-          grid.append(bar);
+          // Paint the event as one joined strip made from pieces inside each day
+          // cell. This preserves cell borders/backgrounds instead of covering the
+          // calendar with a spanning grid item.
+          let pieceDate = segment.start;
+          while (pieceDate <= segment.end) {
+            const target = dayCells.get(pieceDate);
+            if (target) {
+              const piece = makeEventButton(segment.event, 'event multi-day-piece');
+              piece.textContent = '';
+              piece.title = segment.event.title;
+              piece.style.setProperty('--event-lane', String(lane));
+              if (pieceDate === segment.start) piece.classList.add('multi-day-piece--start');
+              if (pieceDate === segment.end) piece.classList.add('multi-day-piece--end');
+              target.multiDayHost.append(piece);
+            }
+            pieceDate = nextDate(pieceDate, 1);
+          }
+
+          // The label itself spans the visible week segment but has no coloured
+          // background, so the underlying day cells remain visible. The coloured
+          // pieces above provide the joined bar and the label is centred over it.
+          const label = document.createElement('div');
+          label.className = 'multi-day-label';
+          label.textContent = segment.event.title;
+          label.style.gridColumn = `${segment.column} / span ${segment.span}`;
+          label.style.gridRow = String(week + 2);
+          label.style.setProperty('--event-lane', String(lane));
+          label.style.color = segment.event.textColour || '#fff';
+          label.setAttribute('aria-hidden', 'true');
+          grid.append(label);
         }
 
         const laneCount = lanes.length;
@@ -246,7 +273,9 @@
           const day = cellIndex + 1;
           if (day >= 1 && day <= days) {
             const date = iso(new Date(data.year, month, day));
-            dayCells.get(date)?.cell.style.setProperty('--multi-event-lanes', String(laneCount));
+            const target = dayCells.get(date);
+            target?.cell.style.setProperty('--multi-event-lanes', String(laneCount));
+            target?.multiDayHost.style.setProperty('--multi-event-lanes', String(laneCount));
           }
         }
       }
@@ -599,11 +628,15 @@
       if (!editing) el.removeAttribute('open');
     });
 
+    document.body.classList.toggle('has-admin-access', adminMode);
     const visitorToggle = document.getElementById('visitor-view-toggle');
     if (visitorToggle) {
-      visitorToggle.hidden = !adminMode;
-      visitorToggle.textContent = visitorView ? 'Edit view' : 'Visitor view';
+      visitorToggle.textContent = visitorView ? 'Edit' : 'Public';
       visitorToggle.setAttribute('aria-pressed', visitorView ? 'true' : 'false');
+      // Safari can defer repainting an element whose hidden state changes after
+      // the asynchronous Access probe. Use a class-driven display state and force
+      // one layout read so the Public/Edit control is painted immediately.
+      void visitorToggle.offsetWidth;
     }
   }
 
@@ -611,8 +644,9 @@
     try {
       adminConfig = await adminApi('/api/admin/config');
       adminMode = true;
-      visitorView = false;
+      visitorView = localStorage.getItem('simple-year-planner-view') === 'public';
       applyAdminPresentation();
+      requestAnimationFrame(() => applyAdminPresentation());
     } catch {
       adminMode = false;
       visitorView = false;
@@ -623,6 +657,7 @@
   document.getElementById('visitor-view-toggle')?.addEventListener('click', () => {
     if (!adminMode) return;
     visitorView = !visitorView;
+    localStorage.setItem('simple-year-planner-view', visitorView ? 'public' : 'edit');
     if (visitorView && shadeMode) stopShadeMode();
     applyAdminPresentation();
   });
