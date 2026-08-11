@@ -718,19 +718,43 @@
     applyAdminPresentation();
   });
 
-  document.getElementById('previous-year-visibility-button')?.addEventListener('click', async () => {
-    if (!adminMode || data.year !== currentPlannerYear) return;
-    const nextValue = data.showPreviousYear === false;
+  async function setPreviousYearVisibility(nextValue, fromFrozenYear = false) {
+    const previousYear = currentPlannerYear - 1;
     const wording = nextValue
-      ? `Show the frozen ${currentPlannerYear - 1} planner to public visitors again?`
-      : `Hide the frozen ${currentPlannerYear - 1} planner from public visitors? The snapshot will be retained and can be shown again later.`;
+      ? `Show the frozen ${previousYear} planner to public visitors again?`
+      : `Hide the frozen ${previousYear} planner from public visitors? The snapshot will be retained and can be shown again later.`;
     if (!window.confirm(wording)) return;
     await adminApi('/api/admin/settings', {
       method: 'POST',
       body: JSON.stringify({ showPreviousYear: nextValue }),
     });
+    if (fromFrozenYear && !nextValue) {
+      window.location.href = `/?year=${currentPlannerYear}`;
+      return;
+    }
     window.location.reload();
+  }
+
+  document.getElementById('previous-year-visibility-button')?.addEventListener('click', async () => {
+    if (!adminMode || data.year !== currentPlannerYear) return;
+    await setPreviousYearVisibility(data.showPreviousYear === false, false);
   });
+
+  document.getElementById('frozen-year-public-toggle')?.addEventListener('click', async () => {
+    if (!adminMode || !isFrozenYear) return;
+    await setPreviousYearVisibility(data.showPreviousYear === false, true);
+  });
+
+  const yearWorkingBackdrop = document.getElementById('year-working-backdrop');
+  function showYearWorking(title, message) {
+    if (!yearWorkingBackdrop) return;
+    const titleEl = document.getElementById('year-working-title');
+    const messageEl = document.getElementById('year-working-message');
+    if (titleEl) titleEl.textContent = title;
+    if (messageEl) messageEl.textContent = message;
+    yearWorkingBackdrop.hidden = false;
+  }
+  function hideYearWorking() { if (yearWorkingBackdrop) yearWorkingBackdrop.hidden = true; }
 
   async function performNextYearReset(action) {
     if (!adminMode || !isFutureYear) return;
@@ -740,22 +764,38 @@
       : `Copy ${currentPlannerYear} into ${data.year} again? This will replace ${data.year}'s current calendars and shading.`;
     if (!window.confirm(warning)) return;
     if (!window.confirm(`Final confirmation: reset ${data.year} now? This cannot be undone.`)) return;
-    await adminApi('/api/admin/year/copy', {
-      method: 'POST',
-      body: JSON.stringify({ source: currentPlannerYear, target: data.year, overwrite: true, action }),
-    });
-    window.location.reload();
+    closeNextYearReset();
+    showYearWorking(
+      isBlank ? `Blanking ${data.year}…` : `Preparing ${data.year}…`,
+      isBlank ? 'Clearing the next-year planner. Please keep this page open.' : `Copying ${currentPlannerYear} calendar and shading settings into ${data.year}. Please keep this page open.`
+    );
+    try {
+      await adminApi('/api/admin/year/copy', {
+        method: 'POST',
+        body: JSON.stringify({ source: currentPlannerYear, target: data.year, overwrite: true, action }),
+      });
+      window.location.reload();
+    } catch (error) {
+      hideYearWorking();
+      window.alert(error instanceof Error ? error.message : 'The planner reset failed.');
+    }
   }
 
   async function copyCurrentYearIntoNext() {
     if (!adminMode || !isFutureYear) return;
     if (!window.confirm(`Create ${data.year} by copying the calendar and shading setup from ${currentPlannerYear}?`)) return;
     if (!window.confirm(`This creates a separate ${data.year} planner snapshot. Later changes to ${currentPlannerYear} will not automatically alter it. Continue?`)) return;
-    await adminApi('/api/admin/year/copy', {
-      method: 'POST',
-      body: JSON.stringify({ source: currentPlannerYear, target: data.year, overwrite: false, action: 'copy' }),
-    });
-    window.location.reload();
+    showYearWorking(`Preparing ${data.year}…`, `Copying ${currentPlannerYear} calendar and shading settings into ${data.year}. Please keep this page open.`);
+    try {
+      await adminApi('/api/admin/year/copy', {
+        method: 'POST',
+        body: JSON.stringify({ source: currentPlannerYear, target: data.year, overwrite: false, action: 'copy' }),
+      });
+      window.location.reload();
+    } catch (error) {
+      hideYearWorking();
+      window.alert(error instanceof Error ? error.message : 'The planner copy failed.');
+    }
   }
 
   const resetBackdrop = document.getElementById('next-year-reset-backdrop');

@@ -611,7 +611,7 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
 </nav></header>
 
 <div id="year-lifecycle-banner" class="year-lifecycle-banner" ${yearFrozen || yearPresent ? 'hidden' : ''}>
-  ${yearFrozen ? `<strong>${year} is frozen.</strong><span class="admin-access-only" hidden> Previous-year planners are read-only and cannot be edited.</span>` : ''}
+  ${yearFrozen ? `<strong>${year} is frozen.</strong><span class="admin-access-only" hidden> Previous-year planners are read-only and cannot be edited.</span><button id="frozen-year-public-toggle" class="admin-access-only year-lifecycle-action" type="button" hidden>${settings.showPreviousYear ? `Hide ${year} publicly` : `Show ${year} publicly`}</button>` : ''}
   ${!yearPresent ? `<strong>${year} has not been prepared yet.</strong><span class="admin-access-only" hidden> Create it by copying ${activeYear} calendar and shading settings.</span><button id="create-next-year-button" class="admin-access-only year-lifecycle-action" type="button" hidden>Copy ${activeYear} into ${year}</button>` : ''}
 </div>
 
@@ -829,6 +829,13 @@ async function publicPage(request: Request, env: Env): Promise<Response> {
       <button type="submit" class="primary">Save shading</button>
     </div>
   </form>
+</div>
+
+<div id="year-working-backdrop" class="event-detail-backdrop year-working-backdrop" hidden>
+  <section class="event-detail-panel year-working-panel" role="dialog" aria-modal="true" aria-labelledby="year-working-title">
+    <div class="year-working-spinner" aria-hidden="true"></div>
+    <div><h2 id="year-working-title">Preparing planner…</h2><p id="year-working-message">Copying calendar and shading settings. Please keep this page open.</p></div>
+  </section>
 </div>
 
 <div id="next-year-reset-backdrop" class="event-detail-backdrop" hidden>
