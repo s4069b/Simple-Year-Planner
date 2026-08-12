@@ -60,11 +60,25 @@ Administration is intentionally protected **outside the application** by the hos
 ---
 # Screenshots
 
-<img src="screenshots/public view.png" width="400" alt="App Screenshot - public">
-<img src="screenshots/Edit view.png" width="400" alt="App Screenshot - edit">
-<img src="screenshots/event pop-out.png" width="400" alt="App Screenshot - event">
-<img src="screenshots/Calendar Manager.png" width="400" alt="App Screenshot - calendar">
-<img src="screenshots/Shading manager.png" width="400" alt="App Screenshot - shading">
+<details>
+  <summary>📸 Click to expand screenshot gallery</summary>
+  <br>
+
+  <h3>1. Year Planner - public</h3>
+  <img src="screenshots/public view.png" width="100%" alt="App Screenshot - public">
+  <br><br>
+  <h3>2. Year Planner - admin</h3>
+  <img src="screenshots/Edit view.png" width="100%" alt="App Screenshot - edit">
+  <br><br>
+  <h3>3. Calendar Event example</h3>
+  <img src="screenshots/event pop-out.png" width="100%" alt="App Screenshot - event">
+  <br><br>
+  <h3>4. Calendar Manager</h3>
+  <img src="screenshots/Calendar Manager.png" width="100%" alt="App Screenshot - calendar">
+  <br><br>
+  <h3>5. Shading Manager</h3>
+  <img src="screenshots/Shading manager.png" width="100%" alt="App Screenshot - shading">
+</details>
 
 ---
 # Cloudflare installation
