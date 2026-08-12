@@ -429,6 +429,7 @@ wrangler.jsonc          Cloudflare Worker/R2/Cron configuration
 
 Simple Year Planner is open-source software released under the MIT License.
 You are free to use, modify and distribute it, subject to the terms of the MIT License.
+ChatGPT did all the hard work.
 
 ## Planner introduction
 
