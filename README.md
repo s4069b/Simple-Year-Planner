@@ -425,11 +425,10 @@ wrangler.jsonc          Cloudflare Worker/R2/Cron configuration
 
 ---
 
-# Licence and contributions
+# Licence
 
-If publishing this repository publicly, add the licence you want contributors and users to follow.
-
-Issues and pull requests are welcome for improvements that preserve the project's lightweight, public-calendar focus.
+Simple Year Planner is open-source software released under the MIT License.
+You are free to use, modify and distribute it, subject to the terms of the MIT License.
 
 ## Planner introduction
 
