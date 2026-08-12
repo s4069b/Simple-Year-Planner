@@ -58,7 +58,15 @@ In **PHP mode**, the public planner uses the same browser UI and calendar render
 Administration is intentionally protected **outside the application** by the hosting platform.
 
 ---
+# Screenshots
 
+<img src="screenshots/public view.png" width="400" alt="App Screenshot - public">
+<img src="screenshots/Edit view.png" width="400" alt="App Screenshot - edit">
+<img src="screenshots/event pop-out.png" width="400" alt="App Screenshot - event">
+<img src="screenshots/Calendar Manager.png" width="400" alt="App Screenshot - calendar">
+<img src="screenshots/Shading manager.png" width="400" alt="App Screenshot - shading">
+
+---
 # Cloudflare installation
 
 Cloudflare mode uses:
